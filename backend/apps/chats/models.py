@@ -4,9 +4,9 @@ from django.db import models
 
 
 class ChatSession(models.Model):
-    """
-    Represents a conversation session owned by a User.
-    """
+    
+    # Represents a conversation session owned by a User.
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     chat_title = models.CharField(max_length=255, default="New Chat")
     user = models.ForeignKey(
@@ -25,9 +25,9 @@ class ChatSession(models.Model):
 
 
 class Chat(models.Model):
-    """
-    Represents an individual message/entry within a ChatSession.
-    """
+    
+    # Represents an individual message/entry within a ChatSession.
+    
     ROLE_CHOICES = [
         ("user", "User"),
         ("assistant", "Assistant"),
@@ -65,9 +65,9 @@ class Chat(models.Model):
 
 
 class Attachment(models.Model):
-    """
-    Represents a file attachment associated with a Chat message.
-    """
+    
+    # Represents a file attachment associated with a Chat message.
+    
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     message = models.ForeignKey(
         Chat,
@@ -85,4 +85,4 @@ class Attachment(models.Model):
 
     def __str__(self):
         return f"{self.file_name} ({self.id})"
-
+
