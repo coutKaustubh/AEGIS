@@ -44,6 +44,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework_simplejwt',
+    'rest_framework_simplejwt.token_blacklist',
     'apps.users',
     'apps.chats',
 ]
@@ -100,6 +102,11 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": (
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
+    # Global default: require authentication on all views unless explicitly overridden.
+    # Individual views can override with permission_classes = [AllowAny].
+    "DEFAULT_PERMISSION_CLASSES": (
+        "rest_framework.permissions.IsAuthenticated",
+    ),
 }
 
 
@@ -107,7 +114,17 @@ SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=30),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
 
+    # Rotate refresh tokens on each use (issue a new refresh token).
+    "ROTATE_REFRESH_TOKENS": True,
+    # Invalidate old refresh tokens after rotation (requires blacklist app).
+    "BLACKLIST_AFTER_ROTATION": True,
+
     "AUTH_HEADER_TYPES": ("Bearer",),
+    "ALGORITHM": "HS256",
+    "SIGNING_KEY": SECRET_KEY,
+
+    # Do not include raw user data in the token payload beyond user_id.
+    "UPDATE_LAST_LOGIN": True,
 }
 
 # Password validation
