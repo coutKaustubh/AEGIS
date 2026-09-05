@@ -4,11 +4,10 @@ from django.db import models
 
 
 class User(AbstractUser):
-    """
-    Custom User model for AEGIS platform.
-    Inherits secure password handling and authentication fields from AbstractUser.
-    Includes unique_id UUID field and metadata.
-    """
+    #  Custom User model for AEGIS platform.
+    #  Inherits secure password handling and authentication fields from AbstractUser.
+    #  Includes unique_id UUID field and metadata.
+    
     unique_id = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
     display_name = models.CharField(max_length=150, blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
