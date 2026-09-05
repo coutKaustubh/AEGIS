@@ -3,7 +3,7 @@ from django.conf import settings
 from django.db import models
 
 
-class ChatSession(models.Model):
+class chat_sessions(models.Model):
     
     # Represents a conversation session owned by a User.
     
@@ -24,7 +24,7 @@ class ChatSession(models.Model):
         return f"{self.chat_title} ({self.id})"
 
 
-class Chat(models.Model):
+class chats(models.Model):
     
     # Represents an individual message/entry within a ChatSession.
     
@@ -43,7 +43,7 @@ class Chat(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     session = models.ForeignKey(
-        ChatSession,
+        chat_sessions,
         on_delete=models.CASCADE,
         related_name="chats"
     )
@@ -64,13 +64,13 @@ class Chat(models.Model):
         return f"[{self.role}] {self.content[:30]} ({self.id})"
 
 
-class Attachment(models.Model):
+class attachments(models.Model):
     
     # Represents a file attachment associated with a Chat message.
     
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     message = models.ForeignKey(
-        Chat,
+        chats,
         on_delete=models.CASCADE,
         related_name="attachments"
     )

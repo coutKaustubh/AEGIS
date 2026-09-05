@@ -9,7 +9,7 @@ urlpatterns = [
 
     # Refresh — accepts a refresh token, returns a new access token.
     path("refresh/", TokenRefreshView.as_view(), name="auth_refresh"),
-
+ 
     # Me — returns the currently authenticated employee's profile.
     path("me/", MeView.as_view(), name="auth_me"),
 ]
