@@ -1,1 +1,0 @@
-"""SIH Workbench test suite."""
