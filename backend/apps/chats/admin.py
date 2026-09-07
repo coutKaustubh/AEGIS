@@ -36,3 +36,11 @@ class ArtifactAdmin(admin.ModelAdmin):
     list_filter = ["artifact_type", "verification_status", "created_at"]
     search_fields = ["name", "path"]
     ordering = ["-created_at"]
+
+@admin.register(permission_requests)
+class PermissionRequestAdmin(admin.ModelAdmin):
+    list_display = ["request_id", "task", "user", "action", "status", "decided_by", "created_at"]
+    list_filter = ["status", "action", "created_at"]
+    search_fields = ["request_id", "action", "tool", "user__username", "task__execution_id"]
+    readonly_fields = ["request_id", "task", "user", "action", "tool", "details", "created_at", "updated_at"]
+    ordering = ["-created_at"]

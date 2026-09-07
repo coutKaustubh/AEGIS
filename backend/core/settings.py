@@ -45,6 +45,7 @@ MEDIA_URL = '/media/'
 # This directory must be visible to the AI service. On one Windows machine it
 # is local; for the Ubuntu GPU deployment configure it as a mounted/shared path.
 AI_SHARED_UPLOAD_DIR = Path(os.getenv('AI_SHARED_UPLOAD_DIR', BASE_DIR / 'shared' / 'uploads'))
+AI_ARTIFACT_ROOT = Path(os.getenv('AI_ARTIFACT_ROOT', BASE_DIR / 'aegis_ai' / 'workspace'))
 SESSION_LOG_DIR = Path(os.getenv('SESSION_LOG_DIR', BASE_DIR / 'logs' / 'sessions'))
 
 

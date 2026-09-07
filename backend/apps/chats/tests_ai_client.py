@@ -64,3 +64,18 @@ class AIClientTests(SimpleTestCase):
 
         with self.assertRaises(AIServiceTimeout):
             AIClient().wait_for_task("exec-123")
+
+    @patch("apps.chats.ai_client.urlopen")
+    def test_permission_and_network_contracts(self, urlopen):
+        urlopen.side_effect = [
+            FakeResponse({"status": "approved", "request_id": "perm-1"}),
+            FakeResponse({"external_calls": 0, "model_calls": 2, "tool_calls": 1}),
+        ]
+
+        approved = AIClient().approve_permission("exec-123", "perm-1", "demo approval")
+        network = AIClient().get_network("exec-123")
+
+        self.assertEqual(approved["status"], "approved")
+        self.assertEqual(network["external_calls"], 0)
+        self.assertEqual(urlopen.call_args_list[0].args[0].full_url, "http://127.0.0.1:8001/api/tasks/exec-123/permissions/perm-1/approve")
+        self.assertEqual(urlopen.call_args_list[1].args[0].full_url, "http://127.0.0.1:8001/api/tasks/exec-123/network")

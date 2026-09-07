@@ -10,6 +10,10 @@ from apps.chats.views import (
     AITaskDetailView,
     AITaskArtifactsView,
     AITaskEventsView,
+    ArtifactDownloadView,
+    AITaskNetworkView,
+    AITaskPermissionListView,
+    AITaskPermissionDecisionView,
 )
 
 urlpatterns = [
@@ -30,6 +34,10 @@ urlpatterns = [
     path("tasks/<uuid:id>/", AITaskDetailView.as_view(), name="ai_task_detail"),
     path("tasks/<uuid:id>/artifacts/", AITaskArtifactsView.as_view(), name="ai_task_artifacts"),
     path("tasks/<uuid:id>/events/", AITaskEventsView.as_view(), name="ai_task_events"),
+    path("tasks/<uuid:id>/network/", AITaskNetworkView.as_view(), name="ai_task_network"),
+    path("tasks/<uuid:id>/permissions/", AITaskPermissionListView.as_view(), name="ai_task_permissions"),
+    path("tasks/<uuid:id>/permissions/<str:request_id>/<str:decision>/", AITaskPermissionDecisionView.as_view(), name="ai_task_permission_decision"),
+    path("artifacts/<uuid:id>/download/", ArtifactDownloadView.as_view(), name="artifact_download"),
 
     # Retrieve / delete a single chat message.
     path("<uuid:id>/", ChatDetailView.as_view(), name="chat_detail"),

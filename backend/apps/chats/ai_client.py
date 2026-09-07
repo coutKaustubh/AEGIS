@@ -65,6 +65,15 @@ class AIClient:
     def get_task(self, execution_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/tasks/{execution_id}")
 
+    def approve_permission(self, execution_id: str, request_id: str, reason: str = "") -> dict[str, Any]:
+        return self._request("POST", f"/api/tasks/{execution_id}/permissions/{request_id}/approve", {"reason": reason})
+
+    def deny_permission(self, execution_id: str, request_id: str, reason: str = "") -> dict[str, Any]:
+        return self._request("POST", f"/api/tasks/{execution_id}/permissions/{request_id}/deny", {"reason": reason})
+
+    def get_network(self, execution_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/tasks/{execution_id}/network")
+
     def get_events(self, execution_id: str) -> list[dict[str, Any]]:
         """Read the AI service's completed SSE event stream into JSON events."""
         raw = self._request_text("GET", f"/api/tasks/{execution_id}/events")

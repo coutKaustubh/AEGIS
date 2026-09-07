@@ -109,6 +109,7 @@ class ai_tasks(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="queued")
     model_used = models.CharField(max_length=150, blank=True, default="")
     result = models.JSONField(default=dict, blank=True)
+    network = models.JSONField(default=dict, blank=True)
     error = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -129,4 +130,38 @@ class artifacts(models.Model):
     sha256 = models.CharField(max_length=64, blank=True, default="")
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
+
+
+class permission_requests(models.Model):
+    """A user-visible approval request for a potentially mutating AI action."""
+
+    STATUS_CHOICES = [
+        ("pending", "Pending"),
+        ("approved", "Approved"),
+        ("denied", "Denied"),
+        ("expired", "Expired"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    request_id = models.CharField(max_length=120, unique=True)
+    task = models.ForeignKey(ai_tasks, on_delete=models.CASCADE, related_name="permission_requests")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="permission_requests")
+    action = models.CharField(max_length=100)
+    tool = models.CharField(max_length=100, blank=True, default="")
+    details = models.JSONField(default=dict, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="decided_permission_requests",
+    )
+    decision_reason = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    expires_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
 

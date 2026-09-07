@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats
+from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats, permission_requests
 
 
 class ChatSerializer(serializers.ModelSerializer):
@@ -88,10 +88,29 @@ class AskChatSerializer(serializers.Serializer):
 class AITaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = ai_tasks
-        fields = ["id", "execution_id", "session", "request_message", "assistant_message", "request_text", "response_text", "status", "model_used", "result", "error", "created_at", "updated_at"]
+        fields = ["id", "execution_id", "session", "request_message", "assistant_message", "request_text", "response_text", "status", "model_used", "result", "network", "error", "created_at", "updated_at"]
 
 
 class ArtifactSerializer(serializers.ModelSerializer):
+    download_url = serializers.SerializerMethodField()
+
+    def get_download_url(self, obj):
+        request = self.context.get("request")
+        if request is None:
+            return None
+        from django.urls import reverse
+        return request.build_absolute_uri(reverse("artifact_download", kwargs={"id": obj.id}))
+
     class Meta:
         model = artifacts
-        fields = ["id", "task", "name", "path", "artifact_type", "verification_status", "sha256", "metadata", "created_at"]
+        fields = ["id", "task", "name", "path", "artifact_type", "verification_status", "sha256", "metadata", "download_url", "created_at"]
+
+
+class PermissionRequestSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = permission_requests
+        fields = [
+            "id", "request_id", "task", "action", "tool", "details", "status",
+            "decided_by", "decision_reason", "created_at", "updated_at", "expires_at",
+        ]
+        read_only_fields = fields

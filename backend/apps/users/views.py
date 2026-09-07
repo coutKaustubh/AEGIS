@@ -1,8 +1,9 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
+from rest_framework import generics
 
-from apps.users.serializers import UserMeSerializer
+from apps.users.serializers import UserMeSerializer, EmployeeCreateSerializer
 
 
 class MeView(APIView):
@@ -18,3 +19,10 @@ class MeView(APIView):
     def get(self, request):
         serializer = UserMeSerializer(request.user)
         return Response(serializer.data)
+
+
+class EmployeeCreateView(generics.CreateAPIView):
+    """Admin-only employee creation; there is intentionally no public signup."""
+
+    permission_classes = [IsAdminUser]
+    serializer_class = EmployeeCreateSerializer

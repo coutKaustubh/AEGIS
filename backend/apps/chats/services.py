@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from pathlib import Path
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
@@ -12,7 +13,7 @@ from django.db import transaction
 from django.db import close_old_connections
 
 from apps.chats.ai_client import AIClient, AIServiceError
-from apps.chats.models import ai_tasks, artifacts, attachments, chat_sessions, chats
+from apps.chats.models import ai_tasks, artifacts, attachments, chat_sessions, chats, permission_requests
 from apps.chats.session_logs import SessionLog
 
 
@@ -54,6 +55,20 @@ def _extract_answer(task_payload: dict[str, Any]) -> str:
     return str(task_payload.get("error") or "The AI service did not return an answer.")
 
 
+def _artifact_details(path: Path) -> dict[str, str]:
+    details = {"sha256": "", "verification_status": "missing"}
+    try:
+        if path.is_file():
+            digest = hashlib.sha256()
+            with path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            details.update({"sha256": digest.hexdigest(), "verification_status": "verified"})
+    except OSError:
+        details["verification_status"] = "unreadable"
+    return details
+
+
 def _register_artifacts(task: ai_tasks, payload: dict[str, Any]) -> None:
     result = payload.get("result") or {}
     candidates: list[Any] = []
@@ -65,24 +80,54 @@ def _register_artifacts(task: ai_tasks, payload: dict[str, Any]) -> None:
     for candidate in candidates:
         if isinstance(candidate, str):
             path = Path(candidate)
+            details = _artifact_details(path)
             artifacts.objects.get_or_create(
                 task=task,
                 path=str(path),
-                defaults={"name": path.name or "artifact", "artifact_type": path.suffix.lstrip(".") or "file"},
+                defaults={"name": path.name or "artifact", "artifact_type": path.suffix.lstrip(".") or "file", **details},
             )
         elif isinstance(candidate, dict) and candidate.get("path"):
             path = Path(str(candidate["path"]))
+            details = _artifact_details(path)
             artifacts.objects.get_or_create(
                 task=task,
                 path=str(path),
                 defaults={
                     "name": str(candidate.get("name") or path.name or "artifact"),
                     "artifact_type": str(candidate.get("format") or path.suffix.lstrip(".") or "file"),
-                    "verification_status": str(candidate.get("verification_status") or "unknown"),
-                    "sha256": str(candidate.get("sha256") or ""),
+                    "verification_status": str(candidate.get("verification_status") or details["verification_status"]),
+                    "sha256": str(candidate.get("sha256") or details["sha256"]),
                     "metadata": candidate,
                 },
             )
+
+
+def _sync_permission(task: ai_tasks, payload: dict[str, Any]) -> None:
+    """Mirror the AI service's pending/finished approval state in Django."""
+    pending = payload.get("approval_request")
+    if isinstance(pending, dict) and pending.get("request_id"):
+        permission_requests.objects.update_or_create(
+            request_id=str(pending["request_id"]),
+            defaults={
+                "task": task,
+                "user": task.user,
+                "action": str(pending.get("action") or "approval"),
+                "tool": str(pending.get("tool") or pending.get("action") or ""),
+                "details": pending,
+                "status": "pending",
+            },
+        )
+    for item in payload.get("approval_history") or []:
+        if not isinstance(item, dict) or not item.get("request_id"):
+            continue
+        status = str(item.get("status") or "pending")
+        if status not in {"pending", "approved", "denied", "expired"}:
+            continue
+        permission_requests.objects.filter(request_id=str(item["request_id"])).update(
+            status=status,
+            details=item,
+            decision_reason=str(item.get("reason") or ""),
+        )
 
 
 def _execute_task(task_id: str) -> None:
@@ -112,14 +157,16 @@ def _execute_task(task_id: str) -> None:
                 for event in events[seen_events:]:
                     session_log.write(str(event.get("type") or event.get("event") or "ai_progress"), task_id=task.id, ai_event=event)
                 seen_events = len(events)
+                _sync_permission(task, update)
 
             final = client.wait_for_task(submitted.execution_id, on_update=record_updates)
             task.status = str(final.get("status", "failed"))
             task.result = final.get("result") or {}
+            task.network = final.get("network") or (task.result or {}).get("network_report") or {}
             task.model_used = str((task.result or {}).get("model") or (task.result or {}).get("model_used") or "")
             task.error = str(final.get("error") or "")
             task.response_text = _extract_answer(final)
-            task.save(update_fields=["status", "result", "model_used", "error", "response_text", "updated_at"])
+            task.save(update_fields=["status", "result", "network", "model_used", "error", "response_text", "updated_at"])
             # The status endpoint omits its event list; fetch the completed
             # stream so session logs contain the full workflow.
             for event in client.get_events(submitted.execution_id):
@@ -129,6 +176,7 @@ def _execute_task(task_id: str) -> None:
                     ai_event=event,
                 )
             record_updates(final)
+            _sync_permission(task, final)
             _register_artifacts(task, final)
             session_log.write("ai_task_completed", task_id=task.id, status=task.status, model=task.model_used)
         except AIServiceError as exc:
@@ -210,13 +258,15 @@ def ask_ai(*, user, content: str, session_id=None, uploaded_files=None, metadata
         final = client.wait_for_task(submitted.execution_id)
         task.status = str(final.get("status", "failed"))
         task.result = final.get("result") or {}
+        task.network = final.get("network") or (task.result or {}).get("network_report") or {}
         task.model_used = str((task.result or {}).get("model") or (task.result or {}).get("model_used") or "")
         task.error = str(final.get("error") or "")
         task.response_text = _extract_answer(final)
-        task.save(update_fields=["status", "result", "model_used", "error", "response_text", "updated_at"])
+        task.save(update_fields=["status", "result", "network", "model_used", "error", "response_text", "updated_at"])
         for event in client.get_events(submitted.execution_id):
             session_log.write(str(event.get("type") or event.get("event") or "ai_progress"), task_id=task.id, ai_event=event)
         _register_artifacts(task, final)
+        _sync_permission(task, final)
         session_log.write("ai_task_completed", task_id=task.id, status=task.status, model=task.model_used)
     except AIServiceError as exc:
         task.status = "failed"

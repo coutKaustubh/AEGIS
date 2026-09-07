@@ -5,12 +5,13 @@ from pathlib import Path
 
 from django.conf import settings
 from django.http import StreamingHttpResponse
+from django.http import FileResponse
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 
-from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats
+from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats, permission_requests
 from apps.chats.serializers import (
     ChatSerializer,
     ChatSessionListSerializer,
@@ -19,7 +20,9 @@ from apps.chats.serializers import (
     AITaskSerializer,
     ArtifactSerializer,
     AskChatSerializer,
+    PermissionRequestSerializer,
 )
+from apps.chats.ai_client import AIClient, AIServiceError
 from apps.chats.services import ask_ai, start_ai
 
 
@@ -167,6 +170,88 @@ class AITaskArtifactsView(generics.ListAPIView):
 
     def get_queryset(self):
         return artifacts.objects.filter(task__id=self.kwargs["id"], task__user=self.request.user)
+
+
+def _resolve_artifact_path(record: artifacts) -> Path:
+    raw = Path(record.path)
+    candidate = raw if raw.is_absolute() else Path(settings.AI_ARTIFACT_ROOT) / raw
+    candidate = candidate.resolve()
+    allowed_roots = [
+        Path(settings.AI_ARTIFACT_ROOT).resolve(),
+        Path(settings.AI_SHARED_UPLOAD_DIR).resolve(),
+        Path(settings.MEDIA_ROOT).resolve(),
+    ]
+    if not any(candidate == root or root in candidate.parents for root in allowed_roots):
+        raise ValueError("artifact_path_outside_allowed_storage")
+    return candidate
+
+
+class ArtifactDownloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            artifact = artifacts.objects.get(id=id, task__user=request.user)
+        except artifacts.DoesNotExist:
+            return Response({"detail": "Artifact not found."}, status=status.HTTP_404_NOT_FOUND)
+        try:
+            path = _resolve_artifact_path(artifact)
+        except ValueError:
+            return Response({"detail": "Artifact storage path is not allowed."}, status=status.HTTP_403_FORBIDDEN)
+        if not path.is_file():
+            return Response({"detail": "Artifact file is unavailable."}, status=status.HTTP_404_NOT_FOUND)
+        return FileResponse(path.open("rb"), as_attachment=True, filename=artifact.name)
+
+
+class AITaskNetworkView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            task = ai_tasks.objects.get(id=id, user=request.user)
+        except ai_tasks.DoesNotExist:
+            return Response({"detail": "AI task not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(task.network or (task.result or {}).get("network_report") or {})
+
+
+class AITaskPermissionListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = PermissionRequestSerializer
+
+    def get_queryset(self):
+        return permission_requests.objects.filter(task__id=self.kwargs["id"], task__user=self.request.user)
+
+
+class AITaskPermissionDecisionView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id, request_id, decision):
+        try:
+            permission = permission_requests.objects.select_related("task").get(
+                request_id=request_id, task__id=id, task__user=request.user,
+            )
+        except permission_requests.DoesNotExist:
+            return Response({"detail": "Permission request not found."}, status=status.HTTP_404_NOT_FOUND)
+        if permission.status != "pending":
+            return Response({"detail": f"Permission is already {permission.status}."}, status=status.HTTP_409_CONFLICT)
+        if decision not in {"approve", "deny"}:
+            return Response({"detail": "Decision must be approve or deny."}, status=status.HTTP_400_BAD_REQUEST)
+        reason = str(request.data.get("reason") or "")[:500]
+        client = AIClient()
+        try:
+            result = (
+                client.approve_permission(permission.task.execution_id, request_id, reason)
+                if decision == "approve"
+                else client.deny_permission(permission.task.execution_id, request_id, reason)
+            )
+        except AIServiceError as exc:
+            return Response({"detail": str(exc)}, status=status.HTTP_502_BAD_GATEWAY)
+        permission.status = "approved" if decision == "approve" else "denied"
+        permission.decided_by = request.user
+        permission.decision_reason = reason
+        permission.details = {**(permission.details or {}), "decision_response": result}
+        permission.save(update_fields=["status", "decided_by", "decision_reason", "details", "updated_at"])
+        return Response(PermissionRequestSerializer(permission, context={"request": request}).data)
 
 
 class AITaskEventsView(APIView):

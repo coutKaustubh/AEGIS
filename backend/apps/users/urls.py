@@ -1,7 +1,7 @@
 from django.urls import path
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 
-from apps.users.views import MeView
+from apps.users.views import MeView, EmployeeCreateView
 
 urlpatterns = [
     # Login — accepts username + password, returns access + refresh tokens.
@@ -12,4 +12,5 @@ urlpatterns = [
  
     # Me — returns the currently authenticated employee's profile.
     path("me/", MeView.as_view(), name="auth_me"),
+    path("employees/", EmployeeCreateView.as_view(), name="employee_create"),
 ]
