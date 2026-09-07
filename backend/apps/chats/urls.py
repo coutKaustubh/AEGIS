@@ -6,6 +6,10 @@ from apps.chats.views import (
     ChatCreateView,
     ChatListBySessionView,
     ChatDetailView,
+    ChatAskView,
+    AITaskDetailView,
+    AITaskArtifactsView,
+    AITaskEventsView,
 )
 
 urlpatterns = [
@@ -22,6 +26,10 @@ urlpatterns = [
     # ── Chat (message) endpoints ──
     # Create a chat (with or without existing session).
     path("", ChatCreateView.as_view(), name="chat_create"),
+    path("ask/", ChatAskView.as_view(), name="chat_ask"),
+    path("tasks/<uuid:id>/", AITaskDetailView.as_view(), name="ai_task_detail"),
+    path("tasks/<uuid:id>/artifacts/", AITaskArtifactsView.as_view(), name="ai_task_artifacts"),
+    path("tasks/<uuid:id>/events/", AITaskEventsView.as_view(), name="ai_task_events"),
 
     # Retrieve / delete a single chat message.
     path("<uuid:id>/", ChatDetailView.as_view(), name="chat_detail"),

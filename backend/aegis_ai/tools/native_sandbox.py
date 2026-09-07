@@ -90,7 +90,7 @@ class NativeSandbox:
 
     def list_files(self, prefix: str = ".") -> list[str]:
         target = self._resolve(prefix)
-        return sorted(str(p.relative_to(self._require_root())) for p in target.rglob("*") if p.is_file())
+        return sorted(p.relative_to(self._require_root()).as_posix() for p in target.rglob("*") if p.is_file())
 
     def dry_run(self, command: str, *, cwd: str = ".") -> dict[str, Any]:
         backend = self._require_backend()

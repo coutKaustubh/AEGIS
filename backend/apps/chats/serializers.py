@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.chats.models import chat_sessions, chats
+from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats
 
 
 class ChatSerializer(serializers.ModelSerializer):
@@ -77,3 +77,21 @@ class CreateChatSerializer(serializers.Serializer):
         default="text",
     )
     metadata = serializers.JSONField(default=dict, required=False)
+
+
+class AskChatSerializer(serializers.Serializer):
+    chat_session_id = serializers.UUIDField(required=False, allow_null=True)
+    content = serializers.CharField(min_length=1)
+    metadata = serializers.JSONField(default=dict, required=False)
+
+
+class AITaskSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = ai_tasks
+        fields = ["id", "execution_id", "session", "request_message", "assistant_message", "request_text", "response_text", "status", "model_used", "result", "error", "created_at", "updated_at"]
+
+
+class ArtifactSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = artifacts
+        fields = ["id", "task", "name", "path", "artifact_type", "verification_status", "sha256", "metadata", "created_at"]

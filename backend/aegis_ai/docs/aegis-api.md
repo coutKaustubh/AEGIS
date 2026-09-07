@@ -8,7 +8,7 @@ the runtime used by the CLI.
 Run locally with:
 
 ```bash
-uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+uvicorn app.api.main:app --host 127.0.0.1 --port 8001
 ```
 
 From the repository root, a typical local setup is:
@@ -16,18 +16,18 @@ From the repository root, a typical local setup is:
 ```bash
 source .venv/bin/activate
 python cli.py                 # interactive terminal client
-uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+uvicorn app.api.main:app --host 127.0.0.1 --port 8001
 ```
 
 Example API calls:
 
 ```bash
-curl http://127.0.0.1:8000/api/health
-curl -X POST http://127.0.0.1:8000/api/tasks \
+curl http://127.0.0.1:8001/api/health
+curl -X POST http://127.0.0.1:8001/api/tasks \
   -H 'content-type: application/json' \
   -d '{"request":"list files in the workspace","files":[],"options":{}}'
-curl http://127.0.0.1:8000/api/tasks/<execution_id>
-curl -N http://127.0.0.1:8000/api/tasks/<execution_id>/events
+curl http://127.0.0.1:8001/api/tasks/<execution_id>
+curl -N http://127.0.0.1:8001/api/tasks/<execution_id>/events
 ```
 
 Endpoints:

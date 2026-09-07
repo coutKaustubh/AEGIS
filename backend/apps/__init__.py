@@ -1,0 +1,1 @@
+"""AEGIS Django applications package."""

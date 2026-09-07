@@ -63,6 +63,8 @@ class ModelRegistry:
     ) -> ModelRegistry:
         """Load the registry from a YAML file."""
         path = Path(path)
+        if not path.is_absolute():
+            path = Path(__file__).resolve().parent.parent / path
         if not path.exists():
             raise FileNotFoundError(f"Model config not found: {path}")
 

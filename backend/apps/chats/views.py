@@ -1,14 +1,26 @@
 from rest_framework import generics, status
+import json
+import time
+from pathlib import Path
+
+from django.conf import settings
+from django.http import StreamingHttpResponse
 from rest_framework.response import Response
+from rest_framework.views import APIView
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
 from rest_framework.permissions import IsAuthenticated
 
-from apps.chats.models import chat_sessions, chats
+from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats
 from apps.chats.serializers import (
     ChatSerializer,
     ChatSessionListSerializer,
     ChatSessionDetailSerializer,
     CreateChatSerializer,
+    AITaskSerializer,
+    ArtifactSerializer,
+    AskChatSerializer,
 )
+from apps.chats.services import ask_ai, start_ai
 
 
 # ──────────────────────────────────────────────
@@ -113,6 +125,87 @@ class ChatCreateView(generics.CreateAPIView):
         response_data["chat_session_id"] = str(session.id)
 
         return Response(response_data, status=status.HTTP_201_CREATED)
+
+
+class ChatAskView(APIView):
+    """POST /api/v1/chats/ask/ — queue a persisted chat-to-AI flow."""
+
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def post(self, request):
+        serializer = AskChatSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        uploaded_files = request.FILES.getlist("files")
+        result = start_ai(
+            user=request.user,
+            content=serializer.validated_data["content"],
+            session_id=serializer.validated_data.get("chat_session_id"),
+            uploaded_files=uploaded_files,
+            metadata=serializer.validated_data.get("metadata", {}),
+        )
+        task = result["task"]
+        return Response({
+            "chat_session_id": str(task.session_id),
+            "user_message": ChatSerializer(result["user_message"]).data,
+            "task": AITaskSerializer(task).data,
+        }, status=status.HTTP_202_ACCEPTED)
+
+
+class AITaskDetailView(generics.RetrieveAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = AITaskSerializer
+    lookup_field = "id"
+
+    def get_queryset(self):
+        return ai_tasks.objects.filter(user=self.request.user)
+
+
+class AITaskArtifactsView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = ArtifactSerializer
+
+    def get_queryset(self):
+        return artifacts.objects.filter(task__id=self.kwargs["id"], task__user=self.request.user)
+
+
+class AITaskEventsView(APIView):
+    """Authenticated Django SSE proxy for the per-session JSONL event log."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            task = ai_tasks.objects.get(id=id, user=request.user)
+        except ai_tasks.DoesNotExist:
+            return Response({"detail": "AI task not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        log_path = Path(settings.SESSION_LOG_DIR).resolve() / f"session_{task.session_id}.jsonl"
+
+        def stream():
+            position = 0
+            deadline = time.monotonic() + settings.AI_TASK_TIMEOUT + 30
+            while time.monotonic() < deadline:
+                if log_path.exists():
+                    with log_path.open("r", encoding="utf-8") as handle:
+                        handle.seek(position)
+                        new_lines = handle.readlines()
+                        position = handle.tell()
+                    for line in new_lines:
+                        try:
+                            event = json.loads(line)
+                        except json.JSONDecodeError:
+                            continue
+                        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+                current_status = ai_tasks.objects.filter(id=task.id).values_list("status", flat=True).first()
+                if current_status in {"success", "failed", "cancelled"} and position >= (log_path.stat().st_size if log_path.exists() else 0):
+                    break
+                time.sleep(0.25)
+
+        response = StreamingHttpResponse(stream(), content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
 
 class ChatListBySessionView(generics.ListAPIView):

@@ -33,6 +33,20 @@ DEBUG = os.getenv('DEBUG', 'True').lower() in ('true', '1', 't')
 
 ALLOWED_HOSTS = []
 
+# Local AEGIS AI service.  These values are intentionally environment-driven
+# so the same Django code works with the Windows development service and the
+# Ubuntu/GPU service used by the AI team.
+AI_SERVICE_URL = os.getenv('AI_SERVICE_URL', 'http://127.0.0.1:8001')
+AI_SERVICE_TIMEOUT = float(os.getenv('AI_SERVICE_TIMEOUT', '10'))
+AI_TASK_TIMEOUT = float(os.getenv('AI_TASK_TIMEOUT', '300'))
+AI_TASK_POLL_INTERVAL = float(os.getenv('AI_TASK_POLL_INTERVAL', '0.5'))
+MEDIA_ROOT = Path(os.getenv('MEDIA_ROOT', BASE_DIR / 'media'))
+MEDIA_URL = '/media/'
+# This directory must be visible to the AI service. On one Windows machine it
+# is local; for the Ubuntu GPU deployment configure it as a mounted/shared path.
+AI_SHARED_UPLOAD_DIR = Path(os.getenv('AI_SHARED_UPLOAD_DIR', BASE_DIR / 'shared' / 'uploads'))
+SESSION_LOG_DIR = Path(os.getenv('SESSION_LOG_DIR', BASE_DIR / 'logs' / 'sessions'))
+
 
 # Application definition
 
