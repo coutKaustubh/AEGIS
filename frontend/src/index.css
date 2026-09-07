@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+@theme {
+  /* ── Backgrounds ─────────────────────────────────────────── */
+  --color-bg-primary: #0a0a0c;
+  --color-bg-surface: #111114;
+  --color-bg-elevated: #19191d;
+  --color-bg-hover: #1f1f24;
+  --color-bg-active: #26262c;
+
+  /* ── Borders ─────────────────────────────────────────────── */
+  --color-border-default: rgba(255, 255, 255, 0.06);
+  --color-border-strong: rgba(255, 255, 255, 0.1);
+  --color-border-accent: rgba(99, 131, 255, 0.3);
+
+  /* ── Text ────────────────────────────────────────────────── */
+  --color-text-primary: #e8e8ec;
+  --color-text-secondary: #8b8b96;
+  --color-text-tertiary: #55555e;
+  --color-text-inverse: #0a0a0c;
+
+  /* ── Accent ──────────────────────────────────────────────── */
+  --color-accent: #6383ff;
+  --color-accent-hover: #4f6fef;
+  --color-accent-muted: rgba(99, 131, 255, 0.1);
+  --color-accent-subtle: rgba(99, 131, 255, 0.06);
+
+  /* ── Semantic ────────────────────────────────────────────── */
+  --color-success: #3ecf71;
+  --color-success-muted: rgba(62, 207, 113, 0.1);
+  --color-warning: #e5a93e;
+  --color-warning-muted: rgba(229, 169, 62, 0.1);
+  --color-danger: #e55454;
+  --color-danger-muted: rgba(229, 84, 84, 0.1);
+
+  /* ── Typography ──────────────────────────────────────────── */
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
+}
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+  }
+
+  html {
+    color-scheme: dark;
+    font-size: 14px;
+  }
+
+  body {
+    font-family: var(--font-sans);
+    background-color: var(--color-bg-primary);
+    color: var(--color-text-primary);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    line-height: 1.6;
+    letter-spacing: -0.01em;
+  }
+
+  /* ── Scrollbar ───────────────────────────────────────────── */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  /* ── Focus ───────────────────────────────────────────────── */
+  :focus-visible {
+    outline: 1.5px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* ── Selection ───────────────────────────────────────────── */
+  ::selection {
+    background: var(--color-accent-muted);
+    color: var(--color-text-primary);
+  }
+}
