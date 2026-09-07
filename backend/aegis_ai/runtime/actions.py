@@ -69,32 +69,6 @@ class ActionParseError(ValueError):
     """Raised when a model response is not a supported structured action."""
 
 
-def _repair_unescaped_windows_backslashes(value: str) -> str:
-    """Repair model output containing raw Windows paths inside JSON."""
-    valid_escape = set('"\\/bfnrtu')
-    repaired: list[str] = []
-    index = 0
-    in_string = False
-    string_start = 0
-    while index < len(value):
-        character = value[index]
-        if character == '"' and (index == 0 or value[index - 1] != "\\"):
-            in_string = not in_string
-            if in_string:
-                string_start = index + 1
-        if character == "\\" and index + 1 < len(value):
-            following = value[index + 1]
-            current_string = value[string_start:index] if in_string else ""
-            path_like = bool(re.match(r"^[A-Za-z]:", current_string))
-            if following not in valid_escape or (path_like and following not in {'"', "\\", "/"}):
-                repaired.append("\\\\")
-                index += 1
-                continue
-        repaired.append(character)
-        index += 1
-    return "".join(repaired)
-
-
 def parse_action(raw: str) -> dict[str, Any]:
     """Parse one ``final`` or ``tool`` JSON action from model output.
 
@@ -122,13 +96,6 @@ def parse_action(raw: str) -> dict[str, Any]:
             parsed = json.loads(candidate)
             break
         except json.JSONDecodeError:
-            repaired = _repair_unescaped_windows_backslashes(candidate)
-            if repaired != candidate:
-                try:
-                    parsed = json.loads(repaired)
-                    break
-                except json.JSONDecodeError:
-                    pass
             for index, character in enumerate(candidate):
                 if character != "{":
                     continue
