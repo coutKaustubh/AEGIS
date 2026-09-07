@@ -206,7 +206,7 @@ class WorkspaceReadTools:
                         pass
                 if len(files) >= _MAX_CONTEXT_FILES:
                     break
-                files.append(relative.as_posix())
+                files.append(str(relative))
                 suffix = path.suffix.lower() or "[no extension]"
                 extensions[suffix] = extensions.get(suffix, 0) + 1
             if len(files) >= _MAX_CONTEXT_FILES:
@@ -378,7 +378,7 @@ class WorkspaceReadTools:
                     "message": "Cannot edit binary file.",
                     "path": rel_str,
                 }
-            content = raw_bytes.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+            content = raw_bytes.decode("utf-8")
         except UnicodeDecodeError:
             return {
                 "ok": False,
@@ -421,12 +421,6 @@ class WorkspaceReadTools:
                 "message": f"Expected {expected_matches} matches, found {count}.",
                 "path": rel_str,
             }
-        # Approval gate
-        active_approver = approver if approver is not None else getattr(self, "approver", None)
-        approved = False
-        if active_approver is not None:
-            approved = self._check_approval(active_approver, rel_str, old_text, new_text)
-
         new_content = content.replace(old_text, new_text, expected_matches)
         import difflib
         diff = "".join(difflib.unified_diff(content.splitlines(True), new_content.splitlines(True),
@@ -435,6 +429,13 @@ class WorkspaceReadTools:
             return {"ok": True, "status": "success", "tool": "edit_file", "path": rel_str,
                     "changed": new_content != content, "matches": count, "diff": diff,
                     "dry_run": True}
+
+        # Approval is requested only after all deterministic validation and
+        # preflight checks pass. A dry-run must never trigger a human prompt.
+        active_approver = approver if approver is not None else getattr(self, "approver", None)
+        approved = False
+        if active_approver is not None:
+            approved = self._check_approval(active_approver, rel_str, old_text, new_text)
 
         if not approved:
             return {
@@ -454,11 +455,12 @@ class WorkspaceReadTools:
 
         try:
             temp_file = tempfile.NamedTemporaryFile(
-                mode="wb",
+                mode="w",
                 dir=str(candidate.parent),
+                encoding="utf-8",
                 delete=False,
             )
-            temp_file.write(new_content.encode("utf-8"))
+            temp_file.write(new_content)
             temp_file.flush()
             temp_file.close()
             Path(temp_file.name).replace(candidate)
@@ -683,14 +685,7 @@ class WorkspaceReadTools:
             "PYTHONUNBUFFERED": "1",
             "PYTHONDONTWRITEBYTECODE": "1",
         }
-        if os.name == "nt":
-            # Python's Windows asyncio backend requires these system
-            # variables even when command execution uses a sanitized env.
-            for key in ("SYSTEMROOT", "WINDIR", "TEMP", "TMP", "USERPROFILE", "LOCALAPPDATA", "PROGRAMDATA"):
-                if os.environ.get(key):
-                    env[key] = os.environ[key]
-        # Provide access to local venv python and workspace root for pytest.
-        # The agent protocol uses POSIX-style virtualenv paths on every OS.
+        # Provide access to local venv python and workspace root for pytest
         project_root = Path(__file__).resolve().parent.parent
         venv_dir = self.root / ".venv"
         if not venv_dir.exists() and (self.root.parent / ".venv").exists():
@@ -704,18 +699,13 @@ class WorkspaceReadTools:
 
         tokens = shlex.split(command)
         if tokens:
-            normalized_token = tokens[0].replace("\\", "/")
-            if normalized_token.startswith(".venv/"):
+            if tokens[0].startswith(".venv/"):
                 if (target_cwd / tokens[0]).exists():
                     tokens[0] = str(target_cwd / tokens[0])
-                elif (venv_dir / normalized_token.removeprefix(".venv/")).exists():
-                    tokens[0] = str(venv_dir / normalized_token.removeprefix(".venv/"))
-                elif (project_root / normalized_token).exists():
-                    tokens[0] = str(project_root / normalized_token)
-                else:
-                    tokens[0] = sys.executable
-            elif tokens[0] in {"pytest", "pytest.exe"}:
-                tokens[0:1] = [sys.executable, "-m", "pytest"]
+                elif (venv_dir / tokens[0].removeprefix(".venv/")).exists():
+                    tokens[0] = str(venv_dir / tokens[0].removeprefix(".venv/"))
+                elif (project_root / tokens[0]).exists():
+                    tokens[0] = str(project_root / tokens[0])
 
         t0 = time.perf_counter()
         timed_out = False
