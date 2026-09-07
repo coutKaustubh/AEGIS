@@ -8,7 +8,7 @@ the runtime used by the CLI.
 Run locally with:
 
 ```bash
-uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+uvicorn app.api.main:app --host 127.0.0.1 --port 8001
 ```
 
 From the repository root, a typical local setup is:
@@ -16,18 +16,18 @@ From the repository root, a typical local setup is:
 ```bash
 source .venv/bin/activate
 python cli.py                 # interactive terminal client
-uvicorn app.api.main:app --host 127.0.0.1 --port 8000
+uvicorn app.api.main:app --host 127.0.0.1 --port 8001
 ```
 
 Example API calls:
 
 ```bash
-curl http://127.0.0.1:8000/api/health
-curl -X POST http://127.0.0.1:8000/api/tasks \
+curl http://127.0.0.1:8001/api/health
+curl -X POST http://127.0.0.1:8001/api/tasks \
   -H 'content-type: application/json' \
   -d '{"request":"list files in the workspace","files":[],"options":{}}'
-curl http://127.0.0.1:8000/api/tasks/<execution_id>
-curl -N http://127.0.0.1:8000/api/tasks/<execution_id>/events
+curl http://127.0.0.1:8001/api/tasks/<execution_id>
+curl -N http://127.0.0.1:8001/api/tasks/<execution_id>/events
 ```
 
 Endpoints:
@@ -36,6 +36,22 @@ Endpoints:
 - `POST /api/tasks` — queues `{ "request": "...", "files": [], "options": {} }`.
 - `GET /api/tasks/{execution_id}` — returns current/final status and result.
 - `GET /api/tasks/{execution_id}/events` — streams high-level SSE progress.
+- `GET /api/tasks/{execution_id}/network` — returns local/external connection and model/tool counters.
+- `GET /api/tasks/{execution_id}/permissions` — returns pending and historical approval requests.
+- `POST /api/tasks/{execution_id}/permissions/{request_id}/approve` — resumes an approved action.
+- `POST /api/tasks/{execution_id}/permissions/{request_id}/deny` — denies an action and lets the task fail safely.
+
+The Django application proxies these capabilities through authenticated routes:
+
+- `/api/v1/system/health/`
+- `/api/v1/chats/tasks/<task-id>/network/`
+- `/api/v1/chats/tasks/<task-id>/permissions/`
+- `/api/v1/chats/tasks/<task-id>/permissions/<request-id>/<approve|deny>/`
+- `/api/v1/chats/artifacts/<artifact-id>/download/`
+
+The API emits structured events such as `approval_required`,
+`approval_resolved`, `tool_started`, `tool_completed`, `network_update`, and
+`task_completed`. It does not expose raw prompts or private model reasoning.
 
 The service is local-only by default. Django should call this HTTP boundary;
 it should not import AEGIS internals. File metadata is passed as context and
