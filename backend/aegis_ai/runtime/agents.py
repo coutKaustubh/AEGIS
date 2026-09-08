@@ -65,6 +65,31 @@ def _coerce_list_of_strings(val: Any) -> list[str]:
     return [str(val)]
 
 
+def _extract_json_object(raw: str) -> dict[str, Any] | None:
+    """Parse plain or markdown-fenced JSON returned by a local model."""
+    candidate = raw.strip()
+    if candidate.startswith("```"):
+        lines = candidate.splitlines()
+        if lines and lines[0].lstrip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip() == "```":
+            lines = lines[:-1]
+        candidate = "\n".join(lines).strip()
+    try:
+        parsed = json.loads(candidate)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        # Recover the first JSON object when a model adds a short preamble.
+        start = candidate.find("{")
+        if start < 0:
+            return None
+        try:
+            parsed, _ = json.JSONDecoder().raw_decode(candidate[start:])
+            return parsed if isinstance(parsed, dict) else None
+        except json.JSONDecodeError:
+            return None
+
+
 class AgentRequest(BaseModel):
     task: str
     context: dict[str, Any] = Field(default_factory=dict)
@@ -345,7 +370,14 @@ class OllamaSpecialistAgent(BaseAgent):
                     vision_timeout = max(30.0, float(os.getenv("VISION_TIMEOUT_SECONDS", "420")))
                     self._observe_model_call()
                     response = await asyncio.wait_for(
-                        self.provider.chat([{"role": "user", "content": request.task}], encoded_images=encoded),
+                        self.provider.chat(
+                            [{"role": "user", "content": request.task}],
+                            encoded_images=encoded,
+                            # Vision answers are rendered in the chat pane;
+                            # keep the demo bounded and avoid spending several
+                            # minutes generating an unnecessarily long caption.
+                            options={"num_predict": 128, "temperature": 0.2},
+                        ),
                         vision_timeout,
                     )
                 return AgentResult(agent=self.descriptor.name, agent_execution_id=execution_id,
@@ -647,12 +679,18 @@ class OllamaSpecialistAgent(BaseAgent):
                         activity_total = 0
                         last_activity = time.monotonic()
                         self._observe_model_call()
+                        # Ollama's explicit thinking channel is opt-in. Some
+                        # local Qwen builds return HTTP 500 when `think=true`
+                        # is combined with a large context window, so keep the
+                        # reliable content path as the default. It can be
+                        # enabled deliberately after validating the local
+                        # Ollama build with AEGIS_OLLAMA_THINKING=true.
+                        enable_thinking = os.getenv("AEGIS_OLLAMA_THINKING", "false").strip().lower() in {
+                            "1", "true", "yes", "on"
+                        }
                         stream_events = self.provider.stream_chat_events(
                             [{"role": "user", "content": coding_prompt}],
-                            # Ollama's explicit thinking channel is supported
-                            # by qwen3-style models. qwen2.5-coder still gets
-                            # native content streaming without that option.
-                            think=str(getattr(getattr(self.provider, "config", None), "model", "")).lower().startswith("qwen3"),
+                            think=enable_thinking and str(getattr(getattr(self.provider, "config", None), "model", "")).lower().startswith("qwen3"),
                             timeout=coding_timeout,
                         )
                         async with asyncio.timeout(coding_timeout):
@@ -1047,30 +1085,56 @@ class OllamaSpecialistAgent(BaseAgent):
             self._observe_model_call()
             response = await self.provider.generate(prompt)
             raw = response.content.strip()
+            data = _extract_json_object(raw)
             try:
-                data = json.loads(raw)
                 if isinstance(data, dict):
                     # Infrastructure/code controls agent_execution_id; model cannot invent or control it.
                     data["agent_execution_id"] = execution_id
                     result = AgentResult.model_validate(data)
+                    # Some local models satisfy the JSON shape but leave the
+                    # human answer empty. Recover text from common nested
+                    # fields before allowing a successful task to finish.
+                    if not result.summary.strip():
+                        candidate = data.get("result")
+                        if isinstance(candidate, dict):
+                            for key in ("content", "answer", "message", "summary", "response", "text"):
+                                value = candidate.get(key)
+                                if isinstance(value, str) and value.strip():
+                                    result.summary = value.strip()[:4000]
+                                    break
+                        if not result.summary.strip():
+                            for key in ("answer", "message", "response", "text"):
+                                value = data.get(key)
+                                if isinstance(value, str) and value.strip():
+                                    result.summary = value.strip()[:4000]
+                                    break
+                    if not result.summary.strip():
+                        return AgentResult(
+                            agent=self.descriptor.name,
+                            agent_execution_id=execution_id,
+                            status=AgentStatus.FAILURE,
+                            summary="The local model returned an empty answer.",
+                            evidence=evidence,
+                            artifacts=artifacts,
+                            errors=["empty_model_answer"],
+                        )
                     result.agent = self.descriptor.name
                     result.evidence = list(dict.fromkeys(evidence + result.evidence))
                     result.artifacts = list(dict.fromkeys(artifacts + result.artifacts))
                     return result
-            except (json.JSONDecodeError, ValueError):
+            except (ValueError, TypeError):
                 pass
             
             # Fallback for LLMs that return arbitrary JSON instead of AgentResult
             summary = raw[:4000]
             try:
-                data = json.loads(raw)
                 if isinstance(data, dict):
                     # Try to find a human-readable message field
                     for key in ("answer", "message", "summary", "response", "text"):
                         if key in data and isinstance(data[key], str):
                             summary = data[key]
                             break
-            except json.JSONDecodeError:
+            except (TypeError, ValueError):
                 pass
                 
             return AgentResult(agent=self.descriptor.name, agent_execution_id=execution_id, status=AgentStatus.SUCCESS, summary=summary, result=raw,

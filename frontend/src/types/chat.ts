@@ -34,6 +34,7 @@ export interface GeneratedArtifact {
   type: 'docx' | 'xlsx' | 'pptx' | 'pdf' | 'code' | 'markdown';
   size: number;
   hash?: string;
+  downloadUrl?: string;
 }
 
 export interface ToolCall {

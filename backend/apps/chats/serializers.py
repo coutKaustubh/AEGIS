@@ -1,3 +1,5 @@
+import json
+
 from rest_framework import serializers
 
 from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats, permission_requests
@@ -83,6 +85,19 @@ class AskChatSerializer(serializers.Serializer):
     chat_session_id = serializers.UUIDField(required=False, allow_null=True)
     content = serializers.CharField(min_length=1)
     metadata = serializers.JSONField(default=dict, required=False)
+
+    def validate_metadata(self, value):
+        # Multipart forms deliver JSON fields as strings. Accept both the
+        # normal JSON object and the string form used by browser FormData.
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except json.JSONDecodeError as exc:
+                raise serializers.ValidationError("metadata must contain valid JSON") from exc
+            if not isinstance(parsed, dict):
+                raise serializers.ValidationError("metadata must be an object")
+            return parsed
+        return value
 
 
 class AITaskSerializer(serializers.ModelSerializer):

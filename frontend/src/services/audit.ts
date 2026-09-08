@@ -11,13 +11,14 @@ export const auditService = {
       return records;
     }
     const { apiClient } = await import('./api');
-    return apiClient.get('/audit');
+    return apiClient.get('/chats/audit/');
   },
 
   async get(id: string): Promise<AuditRecord | undefined> {
     if (USE_MOCK) return mockAuditRecords.find(r => r.id === id);
     const { apiClient } = await import('./api');
-    return apiClient.get(`/audit/${id}`);
+    const records = await apiClient.get<AuditRecord[]>('/chats/audit/');
+    return records.find((record) => record.id === id);
   },
 
   async verify(artifactId: string): Promise<VerificationResult> {

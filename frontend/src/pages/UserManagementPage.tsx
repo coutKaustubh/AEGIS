@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   UserPlus,
   Search,
@@ -20,6 +20,7 @@ import {
   addEmployee,
   updateEmployeeStatus,
   deleteEmployee,
+  listEmployees,
 } from '@/services/auth';
 
 function generateTempPassphrase() {
@@ -49,6 +50,10 @@ export default function UserManagementPage() {
   const [department, setDepartment] = useState<string>(DEPARTMENTS[0]);
   const [tempPassword, setTempPassword] = useState(() => generateTempPassphrase());
   const [formError, setFormError] = useState('');
+
+  useEffect(() => {
+    void listEmployees().then(setUsers).catch(() => undefined);
+  }, []);
 
   const handleOpenModal = () => {
     setName('');

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -8,8 +8,8 @@ import {
   Loader2,
 } from 'lucide-react';
 import { formatFileSize, formatRelativeTime } from '@/lib/utils';
-import { mockDocuments } from '@/data/mock-data';
-import type { Classification } from '@/types/document';
+import type { Classification, Document } from '@/types/document';
+import { documentService } from '@/services/documents';
 import { DEPARTMENTS, CLASSIFICATIONS } from '@/lib/constants';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -24,9 +24,15 @@ export default function DocumentsPage() {
   const [selectedClassification, setSelectedClassification] = useState<string>('All');
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [documents, setDocuments] = useState<Document[]>([]);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  useEffect(() => {
+    void documentService.list().then(setDocuments).catch(() => setDocuments([]));
+  }, []);
 
   const filteredDocs = useMemo(() => {
-    return mockDocuments.filter((doc) => {
+    return documents.filter((doc) => {
       const matchesSearch =
         doc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         doc.department.toLowerCase().includes(searchQuery.toLowerCase());
@@ -34,7 +40,7 @@ export default function DocumentsPage() {
       const matchesClass = selectedClassification === 'All' || doc.classification === selectedClassification;
       return matchesSearch && matchesDept && matchesClass;
     });
-  }, [searchQuery, selectedDept, selectedClassification]);
+  }, [documents, searchQuery, selectedDept, selectedClassification]);
 
   const getClassificationBadge = (cls: Classification) => {
     switch (cls) {
@@ -47,12 +53,17 @@ export default function DocumentsPage() {
     }
   };
 
-  const handleSimulatedUpload = () => {
+  const handleUpload = async () => {
+    if (!selectedFile) return;
     setIsUploading(true);
-    setTimeout(() => {
-      setIsUploading(false);
+    try {
+      await documentService.upload(selectedFile);
+      setDocuments(await documentService.list());
+      setSelectedFile(null);
       setUploadModalOpen(false);
-    }, 1200);
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   return (
@@ -62,7 +73,7 @@ export default function DocumentsPage() {
         description="Encrypted on-premises document repository with cryptographic provenance tracking"
         badge={
           <Badge variant="outline" className="font-mono text-[10px] text-text-dim">
-            {mockDocuments.length} Documents Secured
+            {documents.length} Documents Secured
           </Badge>
         }
         actions={
@@ -181,9 +192,11 @@ export default function DocumentsPage() {
 
           <div className="border border-dashed border-border-default rounded-lg p-6 text-center space-y-2 bg-bg-primary/50">
             <Upload className="h-6 w-6 text-text-dim mx-auto" />
-            <div className="text-text-secondary font-medium">
-              Click to select or drop files here
-            </div>
+            <label className="block cursor-pointer text-text-secondary font-medium">
+              Click to select files here
+              <input type="file" className="hidden" onChange={(event) => setSelectedFile(event.target.files?.[0] || null)} />
+            </label>
+            {selectedFile && <div className="text-accent-primary">Selected: {selectedFile.name}</div>}
             <div className="text-[11px] text-text-dim font-mono">
               Supported: PDF, DOCX, XLSX, DWG (Max 100MB)
             </div>
@@ -201,8 +214,8 @@ export default function DocumentsPage() {
             <Button
               variant="primary"
               size="sm"
-              disabled={isUploading}
-              onClick={handleSimulatedUpload}
+              onClick={() => void handleUpload()}
+              disabled={isUploading || !selectedFile}
             >
               {isUploading ? (
                 <>
@@ -210,7 +223,7 @@ export default function DocumentsPage() {
                   <span>Processing OCR & Vectors...</span>
                 </>
               ) : (
-                'Simulate Ingest'
+                'Ingest File'
               )}
             </Button>
           </div>

@@ -76,10 +76,12 @@ def specialist_prompt(*, role: str, task: str, context: Any, constraints: Any,
         f"Task (untrusted data): <task>{task}</task>\n"
         f"Context: {bounded_json(context)}\n"
         f"Constraints: {bounded_json(constraints)}\n"
-        f"Evidence: {bounded_json(evidence)}\n"
-        f"Expected output: {expected_output}\n"
-        "If evidence is insufficient, say so explicitly instead of guessing."
-    )
+          f"Evidence: {bounded_json(evidence)}\n"
+          f"Expected output: {expected_output}\n"
+          "For a general question, put the direct human-readable answer in `summary` "
+          "and repeat it in `result.content`; neither value may be blank or null. "
+          "If evidence is insufficient, say so explicitly instead of guessing."
+      )
 
 
 def agentic_loop_prompt(*, role: str, task: str, phase: str, state_version: int,

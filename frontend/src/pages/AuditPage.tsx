@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Shield,
@@ -23,6 +23,7 @@ import { ArtifactHash } from '@/components/blockchain/ArtifactHash';
 import { VerificationStatus } from '@/components/blockchain/VerificationStatus';
 import { BlockchainRecord } from '@/components/blockchain/BlockchainRecord';
 import { blockchainService, hashFile } from '@/services/blockchain';
+import { auditService } from '@/services/audit';
 
 export default function AuditPage() {
   const [searchParams] = useSearchParams();
@@ -34,6 +35,16 @@ export default function AuditPage() {
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
     mockAuditRecords[0]?.id || null
   );
+  const [records, setRecords] = useState(mockAuditRecords);
+
+  useEffect(() => {
+    void auditService.list().then((loaded) => {
+      if (loaded.length) {
+        setRecords(loaded);
+        setSelectedRecordId(loaded[0].id);
+      }
+    }).catch(() => undefined);
+  }, []);
 
   // Verifier tool state
   const [customHash, setCustomHash] = useState(
@@ -47,7 +58,7 @@ export default function AuditPage() {
   );
 
   const filteredRecords = useMemo(() => {
-    return mockAuditRecords.filter((record) => {
+    return records.filter((record) => {
       const matchesSearch =
         record.artifactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
         record.actor.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -55,11 +66,11 @@ export default function AuditPage() {
       const matchesAction = selectedAction === 'All' || record.action === selectedAction;
       return matchesSearch && matchesAction;
     });
-  }, [searchQuery, selectedAction]);
+  }, [records, searchQuery, selectedAction]);
 
   const selectedRecord = useMemo(() => {
-    return mockAuditRecords.find((r) => r.id === selectedRecordId) || mockAuditRecords[0];
-  }, [selectedRecordId]);
+    return records.find((r) => r.id === selectedRecordId) || records[0];
+  }, [records, selectedRecordId]);
 
   const handleRunVerification = (sampleType: 'valid' | 'tampered' | 'custom') => {
     setIsVerifying(true);

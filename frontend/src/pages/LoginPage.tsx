@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/context/AuthContext';
 import { DEMO_CREDENTIALS } from '@/services/auth';
+import { USE_MOCK } from '@/services/api';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -107,7 +108,7 @@ export default function LoginPage() {
           </div>
 
           {/* Quick Demo Identities */}
-          <div className="mt-4 pt-3 border-t border-border-subtle">
+          {USE_MOCK && <div className="mt-4 pt-3 border-t border-border-subtle">
             <span className="text-[11px] text-text-dim block mb-2 font-mono uppercase tracking-wider">
               Switch Enclave Persona
             </span>
@@ -143,7 +144,7 @@ export default function LoginPage() {
                 <div className="text-[10px] text-text-muted mt-0.5">Employee (Restricted)</div>
               </button>
             </div>
-          </div>
+          </div>}
         </Card>
 
         {/* Footer info */}

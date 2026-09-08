@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { formatFileSize, formatRelativeTime } from '@/lib/utils';
 import { mockDocuments } from '@/data/mock-data';
+import { documentService } from '@/services/documents';
 import type { Classification } from '@/types/document';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -22,10 +23,36 @@ export default function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [ocrSearch, setOcrSearch] = useState('');
+  const [doc, setDoc] = useState(mockDocuments[0]);
+  const [downloadError, setDownloadError] = useState('');
 
-  const doc = useMemo(() => {
-    return mockDocuments.find((d) => d.id === id) || mockDocuments[0];
+  useEffect(() => {
+    if (!id) return;
+    void documentService.get(id).then((loaded) => { if (loaded) setDoc(loaded); }).catch(() => undefined);
   }, [id]);
+
+  const downloadDocument = async () => {
+    if (!doc.downloadUrl) {
+      setDownloadError('This document has no downloadable file attached.');
+      return;
+    }
+    try {
+      const response = await fetch(doc.downloadUrl, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('aegis_access_token') || ''}` },
+      });
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = doc.name;
+      link.click();
+      URL.revokeObjectURL(url);
+      setDownloadError('');
+    } catch (cause) {
+      setDownloadError(cause instanceof Error ? cause.message : 'Download failed.');
+    }
+  };
 
   const getClassificationBadge = (cls: Classification) => {
     switch (cls) {
@@ -84,7 +111,7 @@ Immediate derating or plate doubler repair required prior to turnaround closure.
             <Button
               variant="secondary"
               size="sm"
-              onClick={() => alert(`Simulated export for ${doc.name}`)}
+              onClick={() => void downloadDocument()}
             >
               <Download className="h-3.5 w-3.5" />
               <span>Download</span>
@@ -100,6 +127,7 @@ Immediate derating or plate doubler repair required prior to turnaround closure.
           </div>
         }
       />
+      {downloadError && <div className="text-xs text-status-danger">{downloadError}</div>}
 
       {/* Tabs Layout */}
       <Tabs

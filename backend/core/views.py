@@ -1,5 +1,5 @@
 from django.db import connection
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -7,9 +7,9 @@ from apps.chats.ai_client import AIClient, AIServiceError
 
 
 class SystemHealthView(APIView):
-    """Public readiness summary used by the frontend startup screen."""
+    """Authenticated readiness summary used by the system page."""
 
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         database = "ok"

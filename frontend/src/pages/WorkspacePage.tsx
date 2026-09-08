@@ -1,634 +1,371 @@
-import { useState, useEffect, useRef } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
-  Send,
-  Paperclip,
-  Image,
-  Plus,
-  FileText,
+  AlertTriangle,
   CheckCircle2,
+  Download,
+  FileText,
   Loader2,
-  X,
-  PanelRightClose,
-  PanelRightOpen,
+  Paperclip,
+  Plus,
+  Send,
   Shield,
+  X,
 } from 'lucide-react';
-import { cn, formatRelativeTime } from '@/lib/utils';
-import {
-  mockConversations,
-  mockMessages,
-  mockTaskInfo,
-  mockAgentActivity,
-  mockCitations,
-  mockArtifacts,
-} from '@/data/mock-data';
-import type { Message, AgentActivity } from '@/types/chat';
-import type { AegisModel } from '@/services/models';
-import { getDefaultModel } from '@/services/models';
-import { Button } from '@/components/ui/Button';
+import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/Badge';
-import { StatusDot } from '@/components/ui/StatusDot';
-import { Modal } from '@/components/ui/Modal';
-import { ArtifactHash } from '@/components/blockchain/ArtifactHash';
+import { Button } from '@/components/ui/Button';
 import { ModelSelector } from '@/components/workspace/ModelSelector';
+import { useAuth } from '@/context/AuthContext';
+import { chatService, type AITaskRecord, type ArtifactRecord, type ChatMessageRecord, type ChatSessionRecord, type PermissionRecord } from '@/services/chats';
+import { type AegisModel, getDefaultModel } from '@/services/models';
+import type { AgentActivity, GeneratedArtifact, Message } from '@/types/chat';
+
+function toMessage(message: ChatMessageRecord): Message {
+  return {
+    id: message.id,
+    role: message.role,
+    content: message.content,
+    timestamp: message.created_at,
+    model: typeof message.metadata?.model === 'string' ? message.metadata.model : undefined,
+  };
+}
+
+function modelRole(model: AegisModel): string {
+  if (model.id === 'aegis-vision') return 'qwen-vision';
+  if (model.id === 'aegis-code') return 'qwen-coder';
+  if (model.id === 'aegis-fast') return 'llama-small';
+  return 'qwen-general';
+}
+
+function eventPayload(event: Record<string, unknown>): Record<string, unknown> {
+  const metadata = event.metadata;
+  if (metadata && typeof metadata === 'object' && 'ai_event' in metadata) {
+    const nested = (metadata as { ai_event?: unknown }).ai_event;
+    if (nested && typeof nested === 'object') return nested as Record<string, unknown>;
+  }
+  return event;
+}
+
+function toGeneratedArtifact(artifact: ArtifactRecord): GeneratedArtifact {
+  return {
+    id: artifact.id,
+    name: artifact.name,
+    type: (artifact.artifact_type === 'md' ? 'markdown' : artifact.artifact_type) as GeneratedArtifact['type'],
+    size: Number(artifact.metadata?.size_bytes || 0),
+    hash: artifact.sha256,
+    downloadUrl: artifact.download_url,
+  };
+}
 
 export default function WorkspacePage() {
   const [searchParams] = useSearchParams();
-  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
   const initialPrompt = searchParams.get('prompt') || '';
-
+  const [sessions, setSessions] = useState<ChatSessionRecord[]>([]);
+  const [activeSession, setActiveSession] = useState<ChatSessionRecord | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState(initialPrompt);
-  const [activeConv, setActiveConv] = useState(mockConversations[0].id);
-  const [sidePanelOpen, setSidePanelOpen] = useState(true);
-  const [rightTab, setRightTab] = useState<'task' | 'sources' | 'artifacts'>('task');
-  const [messages, setMessages] = useState<Message[]>(mockMessages);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [activities, setActivities] = useState<AgentActivity[]>(mockAgentActivity);
-  const [attachedFiles, setAttachedFiles] = useState<{ id: string; name: string }[]>([]);
-  const [previewArtifact, setPreviewArtifact] = useState<string | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
   const [selectedModel, setSelectedModel] = useState<AegisModel>(getDefaultModel());
+  const [task, setTask] = useState<AITaskRecord | null>(null);
+  const [activities, setActivities] = useState<AgentActivity[]>([]);
+  const [artifacts, setArtifacts] = useState<ArtifactRecord[]>([]);
+  const [permissions, setPermissions] = useState<PermissionRecord[]>([]);
+  const [network, setNetwork] = useState<Record<string, unknown>>({});
+  const [rightTab, setRightTab] = useState<'telemetry' | 'network' | 'artifacts'>('telemetry');
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState('');
+  const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const loadSession = async (session: ChatSessionRecord) => {
+    setActiveSession(session);
+    setError('');
+    try {
+      const detail = await chatService.getSession(session.id);
+      const hydratedMessages = await Promise.all((detail.chats || []).map(async (chat) => {
+        const message = toMessage(chat);
+        const taskId = typeof chat.metadata?.ai_task_id === 'string' ? chat.metadata.ai_task_id : '';
+        if (chat.role === 'assistant' && taskId) {
+          try {
+            message.artifacts = (await chatService.getArtifacts(taskId)).map(toGeneratedArtifact);
+          } catch {
+            // The chat remains readable even when an old artifact was removed.
+          }
+        }
+        return message;
+      }));
+      setMessages(hydratedMessages);
+      setSessions((current) => current.map((item) => item.id === detail.id ? detail : item));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to load conversation.');
+    }
+  };
+
+  const refreshTaskData = async (taskId: string) => {
+    const [nextTask, nextArtifacts, nextNetwork, nextPermissions] = await Promise.all([
+      chatService.getTask(taskId),
+      chatService.getArtifacts(taskId),
+      chatService.getNetwork(taskId),
+      chatService.getPermissions(taskId),
+    ]);
+    setTask(nextTask);
+    setArtifacts(nextArtifacts);
+    setNetwork(nextNetwork);
+    setPermissions(nextPermissions);
+    // A queued/running task has no final answer yet.  In particular, never
+    // render a response_text value while polling because it can be stale or
+    // belong to a previous failed attempt.
+    if (['success', 'failed', 'cancelled'].includes(nextTask.status) && nextTask.response_text) {
+      const generatedArtifacts = nextArtifacts.map(toGeneratedArtifact);
+      setMessages((current) => {
+        const message = {
+          id: `assistant-${taskId}`,
+          role: 'assistant' as const,
+          content: nextTask.response_text,
+          timestamp: nextTask.updated_at,
+          model: nextTask.model_used || undefined,
+          artifacts: generatedArtifacts,
+        };
+        const existing = current.findIndex((item) => item.id === message.id);
+        if (existing < 0) return [...current, message];
+        const updated = [...current];
+        updated[existing] = { ...updated[existing], ...message };
+        return updated;
+      });
+    }
+    return nextTask;
+  };
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isGenerating]);
+    let mounted = true;
+    chatService.listSessions().then(async (items) => {
+      if (!mounted) return;
+      setSessions(items);
+      if (items[0]) await loadSession(items[0]);
+    }).catch((cause) => {
+      if (mounted) setError(cause instanceof Error ? cause.message : 'Unable to connect to backend.');
+    }).finally(() => {
+      if (mounted) setLoading(false);
+    });
+    return () => {
+      mounted = false;
+      abortRef.current?.abort();
+    };
+  }, []);
 
-  const handleSendMessage = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    if (!input.trim() && attachedFiles.length === 0) return;
+  const createSession = async () => {
+    try {
+      const session = await chatService.createSession();
+      setSessions((current) => [session, ...current]);
+      await loadSession(session);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to create conversation.');
+    }
+  };
 
-    const userMsg: Message = {
-      id: `msg-${Date.now()}`,
+  const handleFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setFiles(Array.from(event.target.files || []));
+    event.target.value = '';
+  };
+
+  const addActivity = (event: Record<string, unknown>) => {
+    const payload = eventPayload(event);
+    const type = String(payload.type || payload.event || event.event || 'progress');
+    const status: AgentActivity['status'] = /failed|error|blocked/i.test(type) ? 'pending' : 'completed';
+    const detail = String(payload.message || payload.action || payload.tool || type.replaceAll('_', ' '));
+    setActivities((current) => [{
+      id: `${type}-${Date.now()}-${Math.random()}`,
+      action: type.replaceAll('_', ' '),
+      detail,
+      timestamp: new Date().toISOString(),
+      status,
+    }, ...current].slice(0, 60));
+  };
+
+  const sendMessage = async (event?: React.FormEvent) => {
+    event?.preventDefault();
+    if ((!input.trim() && files.length === 0) || sending) return;
+    setSending(true);
+    setError('');
+    setActivities([]);
+    const text = input.trim() || `Please inspect the attached file${files.length > 1 ? 's' : ''}.`;
+    const selectedFiles = files;
+    setMessages((current) => [...current, {
+      id: `local-${Date.now()}`,
       role: 'user',
-      content: input,
+      content: text,
       timestamp: new Date().toISOString(),
-      attachments: attachedFiles.map((f) => ({
-        id: f.id,
-        name: f.name,
-        type: 'document',
-        size: 1200000,
+      attachments: selectedFiles.map((file, index) => ({
+        id: `${file.name}-${index}`,
+        name: file.name,
+        type: file.type.startsWith('image/') ? 'image' : 'document',
+        size: file.size,
       })),
-    };
-
-    setMessages((prev) => [...prev, userMsg]);
+    }]);
     setInput('');
-    setAttachedFiles([]);
-    setIsGenerating(true);
-
-    const newAct1: AgentActivity = {
-      id: `act-${Date.now()}-1`,
-      action: 'Task classified',
-      detail: 'Technical Analysis & Compliance Verification',
-      timestamp: new Date().toISOString(),
-      status: 'running',
-    };
-    setActivities((prev) => [newAct1, ...prev]);
-
-    setTimeout(() => {
-      setActivities((prev) =>
-        prev.map((a) => (a.id === newAct1.id ? { ...a, status: 'completed' } : a))
-      );
-
-      const newAct2: AgentActivity = {
-        id: `act-${Date.now()}-2`,
-        action: 'Knowledge indexed search',
-        detail: 'Queried vector DB across OISD-105 & API-650 specifications',
-        timestamp: new Date().toISOString(),
-        status: 'running',
-      };
-      setActivities((prev) => [newAct2, ...prev]);
-
-      setTimeout(() => {
-        setActivities((prev) =>
-          prev.map((a) => (a.id === newAct2.id ? { ...a, status: 'completed' } : a))
-        );
-
-        const botMsg: Message = {
-          id: `msg-${Date.now() + 1}`,
-          role: 'assistant',
-          content: `## Analysis & Operational Directive
-
-Based on sovereign on-premises evaluation of internal engineering specifications and historical turnaround metrics:
-
-### Summary of Analysis
-- All reported parameters comply with baseline containment standards.
-- Identified **1 critical observation** regarding wall thickness degradation requiring attention under OISD-105 regulations.
-- Proposed remediation workflow queued for human sign-off.
-
-### Regulatory Threshold Check
-| Inspection Metric | Actual Measured | Allowable Threshold | Status |
-|---|---|---|---|
-| Column Wall Thickness | 4.2 mm | 5.0 mm min | **NON-COMPLIANT** |
-| Operating Pressure | 14.8 Bar | 18.0 Bar max | **NORMAL** |
-| Shell Temperature | 320 °C | 350 °C max | **NORMAL** |
-
-### Recommended Action
-Generated compliance report artifact **Inspection_Analysis_Unit4.docx** ready for cryptographic human review.`,
-          timestamp: new Date().toISOString(),
-          model: `${selectedModel.name} (Local)`,
-          tokenCount: 612,
-          latencyMs: 1800,
-          citations: [
-            {
-              id: 'c-1',
-              documentName: 'Unit4_Inspection_Report_Aug2026.pdf',
-              page: 3,
-              relevance: 0.96,
-              snippet: 'Ultrasonic thickness test shows 4.2mm...',
-            },
-            {
-              id: 'c-2',
-              documentName: 'Safety_Manual_H2S.pdf',
-              page: 37,
-              relevance: 0.88,
-              snippet: 'Evacuation and shutdown procedures...',
-            },
-          ],
-          toolCalls: [
-            { id: 'tc-1', name: 'DocTR OCR Extraction', status: 'completed', duration: 320 },
-            { id: 'tc-2', name: 'Vector Knowledge Retrieval', status: 'completed', duration: 150 },
-            { id: 'tc-3', name: 'Local Reasoning Sandbox', status: 'completed', duration: 920 },
-          ],
-        };
-
-        setMessages((prev) => [...prev, botMsg]);
-        setIsGenerating(false);
-      }, 900);
-    }, 700);
+    setFiles([]);
+    try {
+      const created = await chatService.ask(text, activeSession?.id, selectedFiles, {
+        model_role: modelRole(selectedModel),
+        model_label: selectedModel.name,
+      });
+      if (!activeSession || activeSession.id !== created.chat_session_id) {
+        const session = await chatService.getSession(created.chat_session_id);
+        setActiveSession(session);
+        setSessions((current) => current.some((item) => item.id === session.id)
+          ? current.map((item) => item.id === session.id ? session : item)
+          : [session, ...current]);
+      }
+      setTask(created.task);
+      addActivity({ type: 'task_queued', message: 'Task queued in the AEGIS backend.' });
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      await chatService.streamEvents(created.task.id, (streamEvent) => {
+        if (streamEvent.task_id && String(streamEvent.task_id) !== created.task.id) return;
+        addActivity(streamEvent);
+        const payload = eventPayload(streamEvent);
+        const eventType = String(payload.type || payload.event || streamEvent.event || '');
+        const metadata = streamEvent.metadata;
+        if (eventType === 'assistant_message_created' && metadata && typeof metadata === 'object') {
+          const content = (metadata as { content?: unknown }).content;
+          const status = String((metadata as { status?: unknown }).status || '');
+          if (['success', 'failed', 'cancelled'].includes(status) && typeof content === 'string' && content) {
+            setMessages((current) => current.some((item) => item.id === `assistant-${created.task.id}`)
+              ? current
+              : [...current, { id: `assistant-${created.task.id}`, role: 'assistant', content, timestamp: new Date().toISOString(), model: created.task.model_used || undefined }]);
+          }
+        }
+        if (String(payload.type || payload.event || streamEvent.event) === 'approval_required') {
+          void chatService.getPermissions(created.task.id).then(setPermissions).catch(() => undefined);
+        }
+      }, controller.signal);
+      await refreshTaskData(created.task.id);
+    } catch (cause) {
+      if ((cause as Error)?.name !== 'AbortError') {
+        setError(cause instanceof Error ? cause.message : 'The AI task could not be completed.');
+      }
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handleAttachSimulatedFile = () => {
-    const sampleNames = ['CDU04_Vibration_Log.xlsx', 'Turnaround_SOP_Rev3.pdf', 'Pressure_Vessel_Audit.docx'];
-    const randomName = sampleNames[Math.floor(Math.random() * sampleNames.length)];
-    setAttachedFiles((prev) => [...prev, { id: `att-${Date.now()}`, name: randomName }]);
+  const decidePermission = async (permission: PermissionRecord, decision: 'approve' | 'deny') => {
+    if (!task || approvalBusy) return;
+    setApprovalBusy(permission.request_id);
+    try {
+      const updated = await chatService.decidePermission(task.id, permission.request_id, decision);
+      setPermissions((current) => current.map((item) => item.request_id === updated.request_id ? updated : item));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Permission decision failed.');
+    } finally {
+      setApprovalBusy(null);
+    }
   };
 
-  const currentConv = mockConversations.find((c) => c.id === activeConv);
+  const downloadArtifact = async (artifact: ArtifactRecord) => {
+    await downloadFile(artifact.download_url, artifact.name, setError);
+  };
+
+  const downloadMessageArtifact = async (artifact: GeneratedArtifact) => {
+    await downloadFile(artifact.downloadUrl, artifact.name, setError);
+  };
+
+  const downloadFile = async (downloadUrl: string | undefined, name: string, reportError: (message: string) => void) => {
+    if (!downloadUrl) {
+      reportError(`No download URL is available for ${name}.`);
+      return;
+    }
+    try {
+      const response = await fetch(downloadUrl, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('aegis_access_token') || ''}` },
+      });
+      if (!response.ok) throw new Error(`Download failed (${response.status})`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      reportError(cause instanceof Error ? cause.message : 'Artifact download failed.');
+    }
+  };
+
+  const pendingPermission = permissions.find((permission) => permission.status === 'pending');
 
   return (
     <div className="-m-6 lg:-m-8 flex h-[calc(100vh)] bg-bg-primary overflow-hidden">
-      {/* ── Left: Conversation History List ─────────────────── */}
-      <div className="w-56 shrink-0 border-r border-border-subtle bg-bg-surface flex flex-col">
+      <aside className="w-60 shrink-0 border-r border-border-subtle bg-bg-surface flex flex-col">
         <div className="flex items-center justify-between border-b border-border-subtle px-3 py-2.5 h-12">
-          <span className="text-xs font-medium text-text-primary font-mono uppercase tracking-wider">
-            Conversations
-          </span>
-          <button
-            onClick={() => {
-              const newId = `conv-${Date.now()}`;
-              mockConversations.unshift({
-                id: newId,
-                title: 'New Industrial Task',
-                taskType: 'Engineering Assessment',
-                model: 'Mistral-7B',
-                status: 'active',
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString(),
-                messageCount: 0,
-              });
-              setActiveConv(newId);
-              setMessages([]);
-            }}
-            className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-subtle transition-colors"
-            title="Start New Task"
-          >
+          <span className="text-xs font-medium text-text-primary font-mono uppercase tracking-wider">Conversations</span>
+          <button onClick={() => void createSession()} className="p-1 rounded text-text-muted hover:text-text-primary hover:bg-bg-subtle" title="Start new task">
             <Plus className="h-4 w-4" />
           </button>
         </div>
-
         <div className="flex-1 overflow-y-auto divide-y divide-border-subtle/40">
-          {mockConversations.map((conv) => {
-            const isActive = activeConv === conv.id;
-            return (
-              <button
-                key={conv.id}
-                onClick={() => setActiveConv(conv.id)}
-                className={cn(
-                  'w-full px-3 py-2.5 text-left transition-colors relative block',
-                  isActive
-                    ? 'bg-bg-subtle text-text-primary'
-                    : 'text-text-muted hover:bg-bg-subtle/50 hover:text-text-primary'
-                )}
-              >
-                {isActive && (
-                  <div className="absolute left-0 top-1 bottom-1 w-0.5 bg-accent-primary rounded-r" />
-                )}
-                <div className="truncate text-xs font-medium text-text-primary">
-                  {conv.title}
-                </div>
-                <div className="mt-1 flex items-center justify-between text-[10px] text-text-dim">
-                  <span className="truncate">{conv.taskType}</span>
-                  <span className="font-mono">{formatRelativeTime(conv.updatedAt)}</span>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ── Center: Chat Area ──────────────────────────────── */}
-      <div className="flex flex-1 flex-col min-w-0 bg-bg-primary">
-        {/* Workspace Subheader */}
-        <div className="flex items-center justify-between border-b border-border-subtle px-5 h-12 bg-bg-surface/50">
-          <div className="flex items-center gap-3 min-w-0">
-            <h2 className="text-xs font-medium text-text-primary truncate">
-              {currentConv?.title || 'AI Workspace Session'}
-            </h2>
-            <Badge variant="outline" className="text-[10px] font-mono py-0 text-text-dim">
-              {currentConv?.model || 'Mistral-7B Local'}
-            </Badge>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-1.5 text-[11px] text-text-dim font-mono mr-2">
-              <StatusDot color="success" pulse />
-              <span>Sovereign Enclave</span>
-            </div>
-            <button
-              onClick={() => setSidePanelOpen(!sidePanelOpen)}
-              className="p-1.5 text-text-muted hover:text-text-primary rounded hover:bg-bg-subtle transition-colors"
-              title={sidePanelOpen ? 'Collapse side panel' : 'Expand side panel'}
-            >
-              {sidePanelOpen ? (
-                <PanelRightClose className="h-4 w-4" />
-              ) : (
-                <PanelRightOpen className="h-4 w-4" />
-              )}
+          {sessions.map((session) => (
+            <button key={session.id} onClick={() => void loadSession(session)} className={cn('w-full px-3 py-3 text-left', activeSession?.id === session.id ? 'bg-bg-subtle' : 'hover:bg-bg-subtle/50')}>
+              <div className="truncate text-xs font-medium text-text-primary">{session.chat_title}</div>
+              <div className="mt-1 text-[10px] text-text-dim">{new Date(session.updated_at).toLocaleString()}</div>
             </button>
-          </div>
+          ))}
+          {!loading && sessions.length === 0 && <div className="p-4 text-xs text-text-dim">No conversations yet.</div>}
         </div>
+      </aside>
 
-        {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
-          {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center max-w-sm mx-auto text-text-dim space-y-3">
-              <div className="h-10 w-10 rounded-lg bg-bg-subtle border border-border-subtle flex items-center justify-center font-mono text-sm">
-                Æ
-              </div>
-              <p className="text-xs">
-                Sovereign AI workbench initialized. Ask questions, analyze industrial manuals, or dispatch code.
-              </p>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <header className="h-12 shrink-0 border-b border-border-subtle px-4 flex items-center justify-between">
+          <div className="flex items-center gap-2 min-w-0">
+            <Shield className="h-4 w-4 text-accent-primary" />
+            <span className="text-xs text-text-secondary truncate">{activeSession?.chat_title || 'AEGIS Workspace'}</span>
+          </div>
+          {task && <Badge variant={task.status === 'success' ? 'success' : task.status === 'failed' ? 'danger' : 'warning'}>{task.status}</Badge>}
+        </header>
+        <div className="flex-1 overflow-y-auto px-4 py-5 space-y-4">
+          {error && <div className="flex items-start gap-2 rounded border border-status-danger/30 bg-status-danger/10 p-3 text-xs text-status-danger"><AlertTriangle className="h-4 w-4 shrink-0" />{error}<button className="ml-auto" onClick={() => setError('')}><X className="h-3 w-3" /></button></div>}
+          {messages.map((message) => (
+            <div key={message.id} className={cn('max-w-3xl rounded-lg border p-4', message.role === 'user' ? 'ml-auto border-accent-primary/20 bg-accent-primary/5' : 'border-border-subtle bg-bg-surface')}>
+              <div className="mb-2 flex items-center gap-2 text-[10px] uppercase tracking-wider text-text-dim font-mono"><span>{message.role === 'user' ? 'You' : 'AEGIS AI'}</span>{message.model && <span>· {message.model}</span>}</div>
+              <div className="whitespace-pre-wrap text-sm leading-6 text-text-primary">{message.content}</div>
+              {message.attachments?.length ? <div className="mt-3 flex flex-wrap gap-2">{message.attachments.map((file) => <span key={file.id} className="inline-flex items-center gap-1 rounded border border-border-subtle px-2 py-1 text-[10px] text-text-muted"><FileText className="h-3 w-3" />{file.name}</span>)}</div> : null}
+              {message.artifacts?.length ? <div className="mt-3 space-y-2"><div className="text-[10px] uppercase tracking-wider text-text-dim">Generated files</div>{message.artifacts.map((artifact) => <button key={artifact.id} type="button" onClick={() => void downloadMessageArtifact(artifact)} className="flex w-full items-center gap-2 rounded border border-accent-primary/30 bg-accent-primary/5 px-3 py-2 text-left text-xs text-accent-primary hover:bg-accent-primary/10"><Download className="h-3.5 w-3.5" /><span className="truncate">Download {artifact.name}</span></button>)}</div> : null}
             </div>
-          ) : (
-            messages.map((msg) => (
-              <div
-                key={msg.id}
-                className={cn('flex', msg.role === 'user' ? 'justify-end' : 'justify-start')}
-              >
-                <div
-                  className={cn(
-                    'max-w-2xl rounded-lg p-4 text-xs leading-relaxed',
-                    msg.role === 'user'
-                      ? 'bg-bg-subtle border border-border-default text-text-primary'
-                      : 'bg-bg-surface border border-border-subtle text-text-secondary'
-                  )}
-                >
-                  {/* File attachments */}
-                  {msg.attachments && msg.attachments.length > 0 && (
-                    <div className="mb-3 flex flex-wrap gap-1.5">
-                      {msg.attachments.map((att) => (
-                        <span
-                          key={att.id}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-bg-elevated border border-border-subtle text-[11px] font-mono text-text-secondary"
-                        >
-                          <FileText className="h-3 w-3 text-text-muted" />
-                          {att.name}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Body */}
-                  <div className="space-y-2 whitespace-pre-wrap">
-                    {msg.content.split('\n').map((line, i) => {
-                      if (line.startsWith('## '))
-                        return <div key={i} className="text-sm font-semibold text-text-primary pt-1">{line.slice(3)}</div>;
-                      if (line.startsWith('### '))
-                        return <div key={i} className="text-xs font-semibold text-text-primary pt-1">{line.slice(4)}</div>;
-                      if (line.startsWith('- '))
-                        return <li key={i} className="ml-3 list-disc text-text-secondary">{line.slice(2)}</li>;
-                      if (line.startsWith('| '))
-                        return <div key={i} className="font-mono text-[11px] text-text-muted bg-bg-primary/50 px-2 py-0.5 rounded border border-border-subtle/50">{line}</div>;
-                      if (line.trim() === '')
-                        return <div key={i} className="h-0.5" />;
-                      return <p key={i}>{line}</p>;
-                    })}
-                  </div>
-
-                  {/* Autonomous tool calls indicator */}
-                  {msg.toolCalls && msg.toolCalls.length > 0 && (
-                    <div className="mt-3 pt-2.5 border-t border-border-subtle flex flex-wrap gap-1.5">
-                      {msg.toolCalls.map((tc) => (
-                        <span
-                          key={tc.id}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-bg-elevated text-[10px] font-mono text-text-dim border border-border-subtle"
-                        >
-                          <CheckCircle2 className="h-2.5 w-2.5 text-status-success" />
-                          {tc.name} ({tc.duration}ms)
-                        </span>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Message meta */}
-                  {msg.model && (
-                    <div className="mt-2.5 pt-2 border-t border-border-subtle/60 flex items-center justify-between text-[10px] text-text-dim font-mono">
-                      <span>{msg.model}</span>
-                      {msg.latencyMs && <span>{(msg.latencyMs / 1000).toFixed(1)}s</span>}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))
-          )}
-
-          {/* Loading state */}
-          {isGenerating && (
-            <div className="flex justify-start">
-              <div className="rounded-lg bg-bg-surface border border-border-subtle px-4 py-3 space-y-1.5 text-xs text-text-muted">
-                <div className="flex items-center gap-2 text-text-secondary font-medium">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-accent-primary" />
-                  <span>Sovereign Enclave Executing...</span>
-                </div>
-                <p className="text-[11px] text-text-dim">
-                  Evaluating locally across isolated memory space.
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div ref={chatEndRef} />
+          ))}
+          {sending && <div className="flex items-center gap-2 text-xs text-text-muted"><Loader2 className="h-4 w-4 animate-spin text-accent-primary" />AI is processing locally and streaming progress…</div>}
+          {!loading && messages.length === 0 && <div className="h-full flex items-center justify-center text-center text-xs text-text-dim">Start a task or attach one or more files.</div>}
         </div>
-
-        {/* Attachment preview strip */}
-        {attachedFiles.length > 0 && (
-          <div className="px-5 py-2 bg-bg-surface border-t border-border-subtle flex flex-wrap gap-2">
-            {attachedFiles.map((f) => (
-              <span
-                key={f.id}
-                className="inline-flex items-center gap-1.5 rounded bg-bg-elevated border border-border-subtle px-2 py-0.5 text-xs text-text-secondary"
-              >
-                <FileText className="h-3 w-3 text-text-muted" />
-                {f.name}
-                <button
-                  type="button"
-                  onClick={() => setAttachedFiles((prev) => prev.filter((x) => x.id !== f.id))}
-                  className="text-text-dim hover:text-status-danger ml-1"
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
+        <form onSubmit={sendMessage} className="border-t border-border-subtle bg-bg-surface p-3 space-y-2">
+          {files.length > 0 && <div className="flex flex-wrap gap-2">{files.map((file) => <span key={`${file.name}-${file.lastModified}`} className="inline-flex items-center gap-1 rounded border border-accent-primary/30 bg-accent-primary/5 px-2 py-1 text-[10px] text-text-secondary"><FileText className="h-3 w-3" />{file.name}<button type="button" onClick={() => setFiles((current) => current.filter((item) => item !== file))}><X className="h-3 w-3" /></button></span>)}</div>}
+          <div className="flex items-end gap-2">
+            <label className="cursor-pointer rounded p-2 text-text-muted hover:bg-bg-subtle hover:text-text-primary" title="Attach files">
+              <Paperclip className="h-4 w-4" />
+              <input type="file" multiple className="hidden" onChange={handleFiles} />
+            </label>
+            <textarea value={input} onChange={(event) => setInput(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void sendMessage(); } }} rows={2} className="min-h-10 flex-1 resize-none rounded border border-border-default bg-bg-primary px-3 py-2 text-sm text-text-primary outline-none focus:border-accent-primary" placeholder="Ask AEGIS or describe what to do with the attached files…" />
+            <Button type="submit" size="sm" disabled={sending || (!input.trim() && files.length === 0)}><Send className="h-4 w-4" /></Button>
           </div>
-        )}
+          <div className="flex items-center justify-between text-[10px] text-text-dim"><ModelSelector selectedModel={selectedModel} onSelectModel={setSelectedModel} /><span>Selected model applies to this task only.</span></div>
+        </form>
+      </main>
 
-        {/* Input composer */}
-        <div className="border-t border-border-subtle p-4 bg-bg-surface">
-          <form onSubmit={handleSendMessage} className="space-y-2">
-            <div className="rounded-lg border border-border-default bg-bg-primary focus-within:border-border-hover transition-colors">
-              <textarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendMessage();
-                  }
-                }}
-                placeholder="Message AEGIS or instruct sovereign tasks..."
-                rows={2}
-                className="w-full resize-none bg-transparent px-3.5 py-2.5 text-xs text-text-primary placeholder:text-text-dim focus:outline-none"
-              />
-
-              <div className="flex items-center justify-between border-t border-border-subtle px-3 py-1.5">
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={handleAttachSimulatedFile}
-                    className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-text-muted hover:text-text-primary hover:bg-bg-subtle transition-colors"
-                  >
-                    <Paperclip className="h-3 w-3" />
-                    <span>Attach</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAttachSimulatedFile}
-                    className="flex items-center gap-1 px-2 py-1 rounded text-[11px] text-text-muted hover:text-text-primary hover:bg-bg-subtle transition-colors"
-                  >
-                    <Image className="h-3 w-3" />
-                    <span>Drawing</span>
-                  </button>
-                  <div className="h-3.5 w-px bg-border-subtle mx-0.5" />
-                  <ModelSelector
-                    selectedModel={selectedModel}
-                    onSelectModel={setSelectedModel}
-                  />
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] text-text-dim font-mono hidden sm:inline">
-                    Enter to send
-                  </span>
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    size="sm"
-                    disabled={isGenerating || (!input.trim() && attachedFiles.length === 0)}
-                  >
-                    <Send className="h-3 w-3" />
-                    <span>Send</span>
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </form>
+      <aside className="hidden w-80 shrink-0 border-l border-border-subtle bg-bg-surface lg:flex flex-col">
+        <div className="flex border-b border-border-subtle text-[10px] uppercase tracking-wider font-mono">{(['telemetry', 'network', 'artifacts'] as const).map((tab) => <button key={tab} onClick={() => setRightTab(tab)} className={cn('flex-1 px-2 py-3', rightTab === tab ? 'border-b-2 border-accent-primary text-text-primary' : 'text-text-dim')}>{tab}</button>)}</div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {pendingPermission && <div className="rounded border border-status-warning/40 bg-status-warning/10 p-3 space-y-3"><div className="flex items-center gap-2 text-xs font-medium text-status-warning"><Shield className="h-4 w-4" />Permission required</div><div className="text-xs text-text-secondary">{pendingPermission.action} wants to perform a protected operation.</div><pre className="max-h-32 overflow-auto whitespace-pre-wrap text-[10px] text-text-muted">{JSON.stringify(pendingPermission.details, null, 2)}</pre>{isAdmin ? <div className="flex gap-2"><Button size="sm" onClick={() => void decidePermission(pendingPermission, 'approve')} disabled={!!approvalBusy}>Approve</Button><Button size="sm" variant="secondary" onClick={() => void decidePermission(pendingPermission, 'deny')} disabled={!!approvalBusy}>Deny</Button></div> : <div className="text-[10px] text-text-dim">Awaiting an administrator approval.</div>}</div>}
+          {rightTab === 'telemetry' && <div className="space-y-2">{activities.map((activity) => <div key={activity.id} className="flex gap-2 border-b border-border-subtle/50 pb-2 text-xs"><CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-accent-primary" /><div><div className="capitalize text-text-secondary">{activity.action}</div><div className="text-[10px] text-text-dim">{activity.detail}</div></div></div>)}{activities.length === 0 && <div className="text-xs text-text-dim">Task events will appear here.</div>}</div>}
+          {rightTab === 'network' && <div className="space-y-3 text-xs"><Metric label="External calls" value={network.external_calls ?? network.external_connections ?? 0} /><Metric label="Local calls" value={network.local_calls ?? 0} /><Metric label="Air-gapped" value={network.air_gapped === false ? 'NO' : 'YES'} /><pre className="max-h-80 overflow-auto whitespace-pre-wrap text-[10px] text-text-dim">{JSON.stringify(network, null, 2)}</pre></div>}
+          {rightTab === 'artifacts' && <div className="space-y-2">{artifacts.map((artifact) => <div key={artifact.id} className="rounded border border-border-subtle p-3"><div className="flex items-center gap-2 text-xs text-text-primary"><FileText className="h-4 w-4 text-accent-primary" />{artifact.name}</div><div className="mt-1 text-[10px] text-text-dim">{artifact.artifact_type} · {artifact.verification_status}</div><button onClick={() => void downloadArtifact(artifact)} className="mt-2 inline-flex items-center gap-1 text-[10px] text-accent-primary hover:underline"><Download className="h-3 w-3" />Download</button></div>)}{artifacts.length === 0 && <div className="text-xs text-text-dim">Generated artifacts will appear here.</div>}</div>}
         </div>
-      </div>
-
-      {/* ── Right: Collapsible Context / Sources / Artifacts Panel ── */}
-      {sidePanelOpen && (
-        <div className="w-72 shrink-0 border-l border-border-subtle bg-bg-surface flex flex-col">
-          {/* Tabs */}
-          <div className="flex border-b border-border-subtle h-12 items-center px-2">
-            {[
-              { key: 'task', label: 'Telemetry' },
-              { key: 'sources', label: 'Citations' },
-              { key: 'artifacts', label: 'Artifacts' },
-            ].map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setRightTab(tab.key as typeof rightTab)}
-                className={cn(
-                  'flex-1 py-1.5 text-xs font-medium rounded transition-colors text-center',
-                  rightTab === tab.key
-                    ? 'bg-bg-subtle text-text-primary'
-                    : 'text-text-dim hover:text-text-secondary'
-                )}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-3.5 space-y-4">
-            {rightTab === 'task' && (
-              <div className="space-y-4 text-xs">
-                <div>
-                  <span className="text-[10px] font-semibold text-text-dim uppercase tracking-wider font-mono block mb-2">
-                    Active Run Telemetry
-                  </span>
-                  <div className="space-y-1.5 rounded-lg border border-border-subtle bg-bg-primary/50 p-2.5 text-[11px]">
-                    <div className="flex justify-between">
-                      <span className="text-text-dim">Pipeline</span>
-                      <span className="text-text-secondary font-mono">{mockTaskInfo.type}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-dim">Engine</span>
-                      <span className="text-text-secondary font-mono">{mockTaskInfo.model}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-text-dim">Runtime</span>
-                      <span className="text-text-secondary font-mono">{mockTaskInfo.duration}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="text-[10px] font-semibold text-text-dim uppercase tracking-wider font-mono block mb-2">
-                    Execution Steps
-                  </span>
-                  <div className="space-y-2">
-                    {activities.map((act) => (
-                      <div
-                        key={act.id}
-                        className="rounded border border-border-subtle bg-bg-primary/30 p-2 text-xs space-y-1"
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium text-text-primary text-[11px] flex items-center gap-1.5">
-                            {act.status === 'completed' ? (
-                              <CheckCircle2 className="h-3 w-3 text-status-success" />
-                            ) : (
-                              <Loader2 className="h-3 w-3 text-accent-primary animate-spin" />
-                            )}
-                            {act.action}
-                          </span>
-                          <span className="text-[10px] text-text-dim font-mono">
-                            {formatRelativeTime(act.timestamp)}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-text-muted leading-relaxed">
-                          {act.detail}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {rightTab === 'sources' && (
-              <div className="space-y-2.5 text-xs">
-                <span className="text-[10px] font-semibold text-text-dim uppercase tracking-wider font-mono block mb-1">
-                  Retrieved Sources
-                </span>
-                {mockCitations.map((cit) => (
-                  <div
-                    key={cit.id}
-                    className="rounded-lg border border-border-subtle bg-bg-primary/50 p-2.5 space-y-1.5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-medium text-text-primary text-[11px] truncate flex items-center gap-1.5">
-                        <FileText className="h-3 w-3 text-text-dim shrink-0" />
-                        {cit.documentName}
-                      </span>
-                      <Badge variant="outline" className="text-[10px] font-mono py-0">
-                        {Math.round(cit.relevance * 100)}%
-                      </Badge>
-                    </div>
-                    <div className="text-[10px] text-text-dim font-mono">Page {cit.page}</div>
-                    <p className="text-[11px] text-text-muted italic border-l-2 border-border-default pl-2">
-                      "{cit.snippet}"
-                    </p>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {rightTab === 'artifacts' && (
-              <div className="space-y-2.5 text-xs">
-                <span className="text-[10px] font-semibold text-text-dim uppercase tracking-wider font-mono block mb-1">
-                  Synthesized Artifacts
-                </span>
-                {mockArtifacts.map((art) => (
-                  <div
-                    key={art.id}
-                    className="rounded-lg border border-border-subtle bg-bg-primary/50 p-2.5 space-y-2"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 truncate">
-                        <FileText className="h-3.5 w-3.5 text-accent-primary shrink-0" />
-                        <span className="font-medium text-text-primary text-[11px] truncate">
-                          {art.name}
-                        </span>
-                      </div>
-                      <span className="text-[10px] font-mono text-text-dim">
-                        {(art.size / 1024).toFixed(0)} KB
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <ArtifactHash hash={art.hash || '0x0'} length={4} />
-                      <div className="flex items-center gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setPreviewArtifact(art.name)}
-                          className="px-2 py-0.5 rounded text-[10px] text-text-muted hover:text-text-primary hover:bg-bg-subtle transition-colors"
-                        >
-                          Preview
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => navigate(`/audit?verify=${encodeURIComponent(art.name)}`)}
-                          className="px-2 py-0.5 rounded text-[10px] text-accent-primary hover:bg-bg-subtle transition-colors flex items-center gap-1"
-                        >
-                          <Shield className="h-2.5 w-2.5" />
-                          Verify
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* Artifact Preview Modal */}
-      <Modal
-        open={previewArtifact !== null}
-        onClose={() => setPreviewArtifact(null)}
-        title={previewArtifact || 'Artifact Preview'}
-      >
-        <div className="space-y-4 text-xs font-mono text-text-secondary">
-          <div className="p-4 rounded-lg bg-bg-primary border border-border-subtle space-y-2">
-            <div className="text-text-dim">// AEGIS Sovereign Cryptographic Artifact</div>
-            <div className="text-text-primary font-semibold">SOVEREIGN AIR-GAP EVALUATION REPORT</div>
-            <div>STATUS: ANCHORED & READY FOR OPERATOR SIGN-OFF</div>
-            <div>CHECKSUM SHA-256: 0xa8f3...e912</div>
-          </div>
-          <div className="flex justify-end gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => setPreviewArtifact(null)}
-            >
-              Close
-            </Button>
-          </div>
-        </div>
-      </Modal>
+      </aside>
     </div>
   );
+}
+
+function Metric({ label, value }: { label: string; value: unknown }) {
+  return <div className="flex items-center justify-between rounded border border-border-subtle px-3 py-2"><span className="text-text-muted">{label}</span><span className="font-mono text-text-primary">{String(value)}</span></div>;
 }

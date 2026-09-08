@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Bot,
@@ -6,7 +6,8 @@ import {
   Search,
 } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import { mockAgentExecutions } from '@/data/mock-data';
+import { agentService } from '@/services/agents';
+import type { AgentExecution } from '@/types/agent';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
@@ -15,16 +16,21 @@ export default function AgentsPage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [executions, setExecutions] = useState<AgentExecution[]>([]);
+
+  useEffect(() => {
+    void agentService.listExecutions().then(setExecutions).catch(() => setExecutions([]));
+  }, []);
 
   const filteredExecutions = useMemo(() => {
-    return mockAgentExecutions.filter((exec) => {
+    return executions.filter((exec) => {
       const matchesSearch =
         exec.taskTitle.toLowerCase().includes(search.toLowerCase()) ||
         exec.taskType.toLowerCase().includes(search.toLowerCase());
       const matchesStatus = statusFilter === 'All' || exec.status === statusFilter;
       return matchesSearch && matchesStatus;
     });
-  }, [search, statusFilter]);
+  }, [executions, search, statusFilter]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -46,7 +52,7 @@ export default function AgentsPage() {
         description="Autonomous multi-agent execution traces, step latencies, and tool delegation"
         badge={
           <Badge variant="outline" className="font-mono text-[10px] text-text-dim">
-            {mockAgentExecutions.length} Pipelines
+            {executions.length} Pipelines
           </Badge>
         }
       />

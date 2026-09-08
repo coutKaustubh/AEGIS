@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   ReactFlow,
@@ -27,6 +27,7 @@ import {
 import { cn } from '@/lib/utils';
 import { mockAgentExecutions } from '@/data/mock-data';
 import type { AgentNode } from '@/types/agent';
+import { agentService } from '@/services/agents';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
@@ -74,8 +75,10 @@ export default function AgentExecutionDetailPage() {
   const [viewMode, setViewMode] = useState<'timeline' | 'graph'>('timeline');
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  const exec = useMemo(() => {
-    return mockAgentExecutions.find((e) => e.id === id) || mockAgentExecutions[0];
+  const [exec, setExec] = useState(() => mockAgentExecutions[0]);
+  useEffect(() => {
+    if (!id) return;
+    void agentService.getExecution(id).then((result) => { if (result) setExec(result); }).catch(() => undefined);
   }, [id]);
 
   const selectedNode = useMemo(() => {

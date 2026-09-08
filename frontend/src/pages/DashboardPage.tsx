@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   FileText,
@@ -10,10 +10,9 @@ import {
   Activity,
 } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import {
-  mockDashboardMetrics,
-  mockRecentTasks,
-} from '@/data/mock-data';
+import type { AITaskRecord } from '@/services/chats';
+import { approvalService } from '@/services/approvals';
+import { documentService } from '@/services/documents';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card } from '@/components/ui/Card';
 import { StatusDot } from '@/components/ui/StatusDot';
@@ -25,6 +24,19 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const [taskPrompt, setTaskPrompt] = useState('');
+  const [tasks, setTasks] = useState<AITaskRecord[]>([]);
+  const [metrics, setMetrics] = useState({ active: 0, documents: 0, approvals: 0 });
+
+  useEffect(() => {
+    void Promise.all([
+      import('@/services/api').then(({ apiClient }) => apiClient.get<AITaskRecord[]>('/chats/tasks/')),
+      documentService.list(),
+      approvalService.list('pending'),
+    ]).then(([loadedTasks, documents, pending]) => {
+      setTasks(loadedTasks);
+      setMetrics({ active: loadedTasks.filter((task) => task.status === 'queued' || task.status === 'running').length, documents: documents.length, approvals: pending.length });
+    }).catch(() => undefined);
+  }, []);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -42,8 +54,10 @@ export default function DashboardPage() {
   const getStatusIndicator = (status: string) => {
     switch (status) {
       case 'completed':
+      case 'success':
         return <StatusDot color="success" />;
       case 'running':
+      case 'queued':
         return <StatusDot color="info" pulse />;
       case 'failed':
         return <StatusDot color="danger" />;
@@ -80,7 +94,7 @@ export default function DashboardPage() {
           <div>
             <div className="text-xs text-text-muted">Active AI Tasks</div>
             <div className="text-2xl font-medium tracking-tight text-text-primary mt-1">
-              {mockDashboardMetrics.activeAiTasks}
+              {metrics.active}
             </div>
           </div>
           <Activity className="h-5 w-5 text-accent-primary opacity-80" />
@@ -90,7 +104,7 @@ export default function DashboardPage() {
           <div>
             <div className="text-xs text-text-muted">Documents Indexed</div>
             <div className="text-2xl font-medium tracking-tight text-text-primary mt-1">
-              {mockDashboardMetrics.documentsProcessed.toLocaleString()}
+              {metrics.documents.toLocaleString()}
             </div>
           </div>
           <FileText className="h-5 w-5 text-text-muted" />
@@ -100,7 +114,7 @@ export default function DashboardPage() {
           <div>
             <div className="text-xs text-text-muted">Pending Approvals</div>
             <div className="text-2xl font-medium tracking-tight text-text-primary mt-1">
-              {mockDashboardMetrics.pendingApprovals}
+              {metrics.approvals}
             </div>
           </div>
           <Badge variant="warning" className="text-xs">
@@ -165,29 +179,30 @@ export default function DashboardPage() {
         </div>
 
         <Card padding="none" className="divide-y divide-border-subtle overflow-hidden">
-          {mockRecentTasks.map((task) => (
+          {tasks.slice(0, 6).map((task) => (
             <Link
               key={task.id}
-              to="/agents/exec-001"
+              to={`/agents/${task.id}`}
               className="flex items-center gap-3.5 px-4 py-3 hover:bg-bg-subtle/50 transition-colors group"
             >
               <div className="shrink-0">{getStatusIndicator(task.status)}</div>
               <div className="flex-1 min-w-0">
                 <div className="truncate text-xs font-medium text-text-primary group-hover:text-accent-primary transition-colors">
-                  {task.task}
+                  {task.request_text}
                 </div>
                 <div className="text-[11px] text-text-dim flex items-center gap-2 mt-0.5">
-                  <span>{task.type}</span>
+                  <span>AI task</span>
                   <span>·</span>
-                  <span className="font-mono">{task.model}</span>
+                  <span className="font-mono">{task.model_used || 'automatic'}</span>
                 </div>
               </div>
               <div className="text-[11px] text-text-dim whitespace-nowrap font-mono">
-                {formatRelativeTime(task.createdAt)}
+                {formatRelativeTime(task.created_at)}
               </div>
               <ChevronRight className="h-3.5 w-3.5 text-text-dim group-hover:text-text-secondary transition-colors" />
             </Link>
           ))}
+          {tasks.length === 0 && <div className="p-8 text-center text-xs text-text-dim">No tasks have been executed yet.</div>}
         </Card>
       </div>
 

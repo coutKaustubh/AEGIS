@@ -10,6 +10,7 @@ import asyncio
 import base64
 import io
 import json
+import re
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -80,9 +81,24 @@ class OllamaProvider(ModelProvider):
                 data = response.json()
         except httpx.TimeoutException as exc:
             raise ModelTimeoutError(f"Ollama timed out after {timeout_seconds}s") from exc
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text.strip()[:800]
+            suffix = f": {detail}" if detail else ""
+            raise ProviderError(
+                f"Ollama chat request failed with HTTP {exc.response.status_code}{suffix}"
+            ) from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise ProviderError(f"Ollama chat request failed: {exc}") from exc
-        content = str(data.get("message", {}).get("content", "")).strip()
+        message = data.get("message", {}) or {}
+        content = str(message.get("content", "")).strip()
+        # qwen3-vl can spend a bounded request budget in its reasoning field
+        # and return an empty content field even when Ollama completed
+        # successfully.  Preserve that local answer instead of converting a
+        # valid vision response into a generic "no usable output" failure.
+        if not content:
+            thinking = str(message.get("thinking", "")).strip()
+            if thinking:
+                content = re.sub(r"</?think>", "", thinking, flags=re.I).strip()
         if not content:
             raise EmptyGenerationError("Model returned no usable output")
         return ModelResponse(content=content, model=self.config.model, raw=data)
@@ -134,6 +150,12 @@ class OllamaProvider(ModelProvider):
                                 yield {"kind": "content", "token": str(token)}
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise ModelTimeoutError(f"Ollama stream exceeded {timeout_seconds:g}s deadline") from exc
+        except httpx.HTTPStatusError as exc:
+            detail = exc.response.text.strip()[:800]
+            suffix = f": {detail}" if detail else ""
+            raise ProviderError(
+                f"Ollama streaming request failed with HTTP {exc.response.status_code}{suffix}"
+            ) from exc
         except httpx.HTTPError as exc:
             raise ProviderError(f"Ollama streaming request failed: {exc}") from exc
         if not received_output:

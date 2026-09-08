@@ -100,7 +100,35 @@ def build_task_graph(master: MasterAgent, *, workspace_root: str,
             return {"status": TaskStatus.FAILED.value,
                     "errors": [{"code": "no_capability", "message": "No suitable capability found."}],
                     "trace": [_emit(progress_callback, "capability_discovery_failed")]}
-        item = planned[0]
+        item = dict(planned[0])
+        # The UI may explicitly select a logical model. Keep capability routing
+        # as the default, but honour a valid user selection when a matching
+        # specialist exists. This is deliberately an agent/provider selection,
+        # never a permission or policy bypass.
+        options = request_context.get("options", {}) if isinstance(request_context, dict) else {}
+        requested_model = ""
+        if isinstance(options, dict):
+            requested_model = str(options.get("model_role") or options.get("model") or "").strip()
+        if requested_model and requested_model.lower() not in {"auto", "automatic"}:
+            selected_agent = str(item.get("agent", ""))
+            preferred = {
+                "qwen-coder": "coding_agent",
+                "qwen-vision": "vision_agent",
+                "llama-small": "lightweight_agent",
+            }.get(requested_model)
+            if requested_model == "qwen-general":
+                # qwen-general powers document/general work, but it must not
+                # override an image request and silently bypass vision_agent.
+                preferred = selected_agent if selected_agent in {"document_agent", "general_agent"} else None
+            try:
+                selected_descriptor = master.registry.get(preferred).descriptor if preferred else None
+                if selected_descriptor and selected_descriptor.provider_name == requested_model:
+                    item.update({"agent": preferred, "routing_source": "user_selected_model",
+                                 "selection_score": 1.0, "selected_model_override": requested_model})
+            except Exception:
+                # An unavailable local model falls back to normal capability
+                # routing; the final task still reports the actual provider.
+                pass
         relevant_files: list[str] = []
         try:
             index = RepositoryIndex(workspace_root)
@@ -158,7 +186,8 @@ def build_task_graph(master: MasterAgent, *, workspace_root: str,
         step["status"] = StepStatus.RUNNING.value
         current_agent = state.get("selected_agent", "")
         stage = str(step.get("compound_stage", "specialist"))
-        stage_agent = {
+        explicit_model = str(state.get("task", {}).get("selected_model_override", ""))
+        stage_agent = current_agent if explicit_model else {
             "extract": "document_agent", "interpret_visual": "vision_agent",
             "calculate": "general_agent", "draft_approval": "document_agent",
             "verify": "general_agent",

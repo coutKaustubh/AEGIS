@@ -205,6 +205,30 @@ class Orchestrator:
         """Run every Master-first request through the universal task graph."""
         request_context = dict(context or {})
         request_context.setdefault("workspace_root", str(self.workspace_tools.root))
+        # API uploads are already copied into the AI workspace before this
+        # method runs.  Prefer those trusted staged paths over a filename
+        # mentioned in natural language (which is not a filesystem path).
+        attached = request_context.get("files") or []
+        if attached:
+            candidates = [item for item in attached if isinstance(item, dict) and item.get("path")]
+            requested_name = re.search(
+                r"(?:^|\s)([^\s]+\.(?:pdf|docx?|png|jpe?g|webp|bmp|tiff?|pgm|ppm))\b",
+                user_request,
+                re.I,
+            )
+            selected = None
+            if requested_name:
+                wanted = Path(requested_name.group(1).strip('`\"\'.,')).name.lower()
+                selected = next((item for item in candidates
+                                 if Path(str(item.get("name") or item.get("path"))).name.lower() == wanted), None)
+            selected = selected or (candidates[0] if len(candidates) == 1 else None)
+            if selected:
+                staged_path = str(selected["path"])
+                suffix = Path(staged_path).suffix.lower()
+                if suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".pgm", ".ppm"}:
+                    request_context["image_paths"] = [staged_path]
+                elif suffix in {".pdf", ".doc", ".docx"}:
+                    request_context["input_path"] = staged_path
         # Preserve explicit local media/file references for the universal graph
         # instead of letting specialist selection discard them.
         path_match = re.search(r"(?:^|\s)([^\s]+\.(?:pdf|docx?|png|jpe?g|webp|bmp|tiff?|pgm|ppm|py|js|ts|rs|go|java|c|cpp))\b", user_request, re.I)

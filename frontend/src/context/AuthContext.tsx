@@ -20,16 +20,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     // Initial session hydration
-    try {
-      const stored = getCurrentUser();
-      if (stored) {
-        setUser(stored);
-      }
-    } catch {
-      // fallback
-    } finally {
-      setLoading(false);
-    }
+    void getCurrentUser()
+      .then((stored) => {
+        if (stored) setUser(stored);
+      })
+      .catch(() => undefined)
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (email: string, password?: string): Promise<User> => {

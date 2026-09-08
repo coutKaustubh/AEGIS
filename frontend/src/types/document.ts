@@ -14,6 +14,7 @@ export interface Document {
   uploadedAt: string;
   uploadedBy: string;
   hash?: string;
+  downloadUrl?: string;
   ocrStatus?: 'pending' | 'completed' | 'failed' | 'not_required';
   ragStatus?: 'pending' | 'indexed' | 'failed' | 'not_indexed';
   aiAnalysis?: DocumentAnalysis;

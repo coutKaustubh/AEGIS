@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -8,8 +8,8 @@ import {
   Loader2,
   ChevronRight,
 } from 'lucide-react';
-import { mockKnowledgeResults } from '@/data/mock-data';
-import type { KnowledgeAnswer } from '@/types/knowledge';
+import { chatService } from '@/services/chats';
+import type { KnowledgeAnswer, KnowledgeSearchResult } from '@/types/knowledge';
 import { DEPARTMENTS } from '@/lib/constants';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -28,59 +28,24 @@ export default function KnowledgePage() {
   const [query, setQuery] = useState('H2S emergency evacuation protocol');
   const [selectedDept, setSelectedDept] = useState('All');
   const [isAsking, setIsAsking] = useState(false);
-  const [aiAnswer, setAiAnswer] = useState<KnowledgeAnswer | null>({
-    answer:
-      'According to Safety Manual Section 4 (Page 37), if Hydrogen Sulfide (H2S) concentration exceeds 10 ppm, personnel must immediately deploy personal escape masks, sound the area horn, and evacuate upwind/crosswind to designated Assembly Point C. Operations must trigger automated remote isolation of CDU-04 manifold valves within 90 seconds.',
-    sources: [
-      {
-        documentName: 'Safety Manual — H2S Emergency Response Procedures',
-        page: 37,
-        snippet: 'Evacuation protocol mandatory once detector alarm triggers above 10 PPM threshold...',
-        relevance: 0.96,
-      },
-      {
-        documentName: 'Standard Operating Procedure — Crude Distillation Unit Startup',
-        page: 14,
-        snippet: 'CDU emergency shutdown interlocks and manual tripping sequence...',
-        relevance: 0.89,
-      },
-    ],
-    model: 'Mistral-7B Instruct (Local)',
-    processedLocally: true,
-  });
+  const [aiAnswer, setAiAnswer] = useState<KnowledgeAnswer | null>(null);
+  const filteredResults: KnowledgeSearchResult[] = [];
 
-  const filteredResults = useMemo(() => {
-    return mockKnowledgeResults.filter((item) => {
-      const matchesDept = selectedDept === 'All' || item.department === selectedDept;
-      const matchesQuery =
-        !query ||
-        item.documentName.toLowerCase().includes(query.toLowerCase()) ||
-        item.snippet.toLowerCase().includes(query.toLowerCase());
-      return matchesDept && matchesQuery;
-    });
-  }, [query, selectedDept]);
-
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!query.trim()) return;
 
     setIsAsking(true);
-    setTimeout(() => {
-      setAiAnswer({
-        answer: `Direct sovereign synthesis from internal repository for "${query}":\nAll operating procedures must adhere strictly to statutory OISD-105 standards. All inspection thresholds for carbon steel pressure vessels mandate emergency remedial action when wall thickness diminishes below 5.0mm. Refer to the specific SOPs below for authorization sign-offs.`,
-        sources: [
-          {
-            documentName: filteredResults[0]?.documentName || 'Safety Manual — H2S Protocol',
-            page: filteredResults[0]?.relevantPages[0] || 1,
-            snippet: filteredResults[0]?.snippet || 'Operating parameters and safety margins.',
-            relevance: 0.94,
-          },
-        ],
-        model: 'Mistral-7B Instruct (Local)',
-        processedLocally: true,
-      });
+    try {
+      const created = await chatService.ask(query);
+      await chatService.streamEvents(created.task.id, () => undefined);
+      const task = await chatService.getTask(created.task.id);
+      setAiAnswer({ answer: task.response_text || task.error || 'No answer returned.', sources: [], model: task.model_used || 'Local model', processedLocally: true });
+    } catch (cause) {
+      setAiAnswer({ answer: cause instanceof Error ? cause.message : 'Knowledge query failed.', sources: [], model: 'AEGIS backend', processedLocally: true });
+    } finally {
       setIsAsking(false);
-    }, 600);
+    }
   };
 
   return (

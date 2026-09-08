@@ -12,7 +12,9 @@ models:
       - summarization
       - document_analysis
       - artifact_generation
-    context_length: 32768
+    # 8k is the stable local-demo window for the 4B model on Windows.
+    # Increase only after the machine has been verified with the larger load.
+    context_length: 8192
     priority: 10
 
   qwen-vision:
@@ -23,7 +25,7 @@ models:
       - multimodal
       - image_analysis
       - document_analysis
-    context_length: 32768
+    context_length: 8192
     priority: 10
 
   qwen-coder:
@@ -38,7 +40,7 @@ models:
 
   llama-small:
     provider: ollama
-    model: "Qwen2.5:1.5b"
+    model: "llama3.2:1b"
     capabilities:
       - general
       - lightweight

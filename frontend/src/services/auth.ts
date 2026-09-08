@@ -1,4 +1,5 @@
 import type { User } from '@/types/system';
+import { apiClient, clearTokens, getAccessToken, setTokens, USE_MOCK } from './api';
 
 const AUTH_STORAGE_KEY = 'aegis_auth_session';
 const USERS_STORAGE_KEY = 'aegis_mock_users';
@@ -96,7 +97,15 @@ function saveStoredUsers(users: User[]) {
   }
 }
 
-export function getCurrentUser(): User | null {
+export async function getCurrentUser(): Promise<User | null> {
+  if (!USE_MOCK && getAccessToken()) {
+    try {
+      return normalizeUser(await apiClient.get<Record<string, unknown>>('/auth/me/'));
+    } catch {
+      clearTokens();
+      return null;
+    }
+  }
   try {
     const raw = localStorage.getItem(AUTH_STORAGE_KEY);
     if (!raw) return null;
@@ -112,6 +121,14 @@ export function isAdmin(user: User | null | undefined): boolean {
 }
 
 export async function login(identifier: string, password = ''): Promise<User> {
+  if (!USE_MOCK) {
+    const payload = await apiClient.post<{ access: string; refresh: string }>('/auth/login/', {
+      username: identifier.trim(),
+      password,
+    });
+    setTokens(payload.access, payload.refresh);
+    return normalizeUser(await apiClient.get<Record<string, unknown>>('/auth/me/'));
+  }
   // Simulated local network latency
   await new Promise((resolve) => setTimeout(resolve, 300));
 
@@ -156,6 +173,10 @@ export async function login(identifier: string, password = ''): Promise<User> {
 }
 
 export async function logout(): Promise<void> {
+  if (!USE_MOCK) {
+    clearTokens();
+    return;
+  }
   await new Promise((resolve) => setTimeout(resolve, 150));
   try {
     localStorage.removeItem(AUTH_STORAGE_KEY);
@@ -168,9 +189,27 @@ export function getManagedUsers(): User[] {
   return getStoredUsers();
 }
 
+export async function listEmployees(): Promise<User[]> {
+  if (!USE_MOCK) {
+    const users = await apiClient.get<Record<string, unknown>[]>('/auth/employees/directory/');
+    return users.map(normalizeUser);
+  }
+  return getStoredUsers();
+}
+
 export async function addEmployee(
   newUserData: EmployeeProvisioningInput,
 ): Promise<ProvisionedEmployee> {
+  if (!USE_MOCK) {
+    const password = newUserData.temporaryPassword || generateTemporaryPassword();
+    const created = await apiClient.post<Record<string, unknown>>('/auth/employees/', {
+      username: newUserData.email,
+      email: newUserData.email,
+      display_name: newUserData.name,
+      password,
+    });
+    return { ...normalizeUser(created), temporaryPassword: password };
+  }
   await new Promise((resolve) => setTimeout(resolve, 250));
   const current = getStoredUsers();
   const { temporaryPassword, ...persistedUserData } = newUserData;
@@ -192,6 +231,10 @@ function generateTemporaryPassword(): string {
 }
 
 export async function updateEmployeeStatus(id: string, status: 'active' | 'inactive' | 'suspended'): Promise<void> {
+  if (!USE_MOCK) {
+    await apiClient.patch(`/auth/employees/${id}/`, { is_active: status === 'active', status });
+    return;
+  }
   await new Promise((resolve) => setTimeout(resolve, 200));
   const current = getStoredUsers();
   const updated = current.map((u) => (u.id === id ? { ...u, status } : u));
@@ -199,8 +242,24 @@ export async function updateEmployeeStatus(id: string, status: 'active' | 'inact
 }
 
 export async function deleteEmployee(id: string): Promise<void> {
+  if (!USE_MOCK) {
+    await apiClient.delete(`/auth/employees/${id}/`);
+    return;
+  }
   await new Promise((resolve) => setTimeout(resolve, 200));
   const current = getStoredUsers();
   const updated = current.filter((u) => u.id !== id);
   saveStoredUsers(updated);
+}
+
+function normalizeUser(raw: Record<string, unknown>): User {
+  return {
+    id: String(raw.id || raw.unique_id || raw.username || ''),
+    name: String(raw.name || raw.display_name || raw.username || ''),
+    email: String(raw.email || raw.username || ''),
+    role: raw.role === 'admin' ? 'admin' : 'employee',
+    department: String(raw.department || ''),
+    status: raw.status === 'inactive' || raw.status === 'suspended' ? raw.status : 'active',
+    lastLogin: typeof raw.last_login === 'string' ? raw.last_login : undefined,
+  };
 }

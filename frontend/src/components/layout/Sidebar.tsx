@@ -1,4 +1,5 @@
 import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -18,7 +19,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { APP_NAME, APP_SUBTITLE, NAV_ITEMS } from '@/lib/constants';
-import { mockApprovals } from '@/data/mock-data';
+import { approvalService } from '@/services/approvals';
 import { StatusDot } from '@/components/ui/StatusDot';
 import { useAuth } from '@/context/AuthContext';
 
@@ -45,7 +46,11 @@ export function Sidebar({ collapsed, onToggleCollapse, onOpenCommandPalette }: S
   const location = useLocation();
   const navigate = useNavigate();
   const { user, isAdmin, logout } = useAuth();
-  const pendingApprovalsCount = mockApprovals.filter((a) => a.status === 'pending').length;
+  const [pendingApprovalsCount, setPendingApprovalsCount] = useState(0);
+
+  useEffect(() => {
+    void approvalService.list('pending').then((items) => setPendingApprovalsCount(items.length)).catch(() => setPendingApprovalsCount(0));
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     await logout();

@@ -4,14 +4,16 @@ import time
 from pathlib import Path
 
 from django.conf import settings
+from django.db.models import Q
 from django.http import StreamingHttpResponse
 from django.http import FileResponse
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
+from rest_framework.renderers import BaseRenderer
 from rest_framework.permissions import IsAuthenticated
 
-from apps.chats.models import ai_tasks, artifacts, chat_sessions, chats, permission_requests
+from apps.chats.models import ai_tasks, artifacts, attachments, chat_sessions, chats, permission_requests
 from apps.chats.serializers import (
     ChatSerializer,
     ChatSessionListSerializer,
@@ -23,7 +25,22 @@ from apps.chats.serializers import (
     PermissionRequestSerializer,
 )
 from apps.chats.ai_client import AIClient, AIServiceError
-from apps.chats.services import ask_ai, start_ai
+from apps.chats.services import ask_ai, start_ai, _save_uploaded_files
+
+
+class EventStreamRenderer(BaseRenderer):
+    """Tell DRF that the authenticated task-events endpoint speaks SSE."""
+
+    media_type = "text/event-stream"
+    format = "sse"
+    charset = None
+    render_style = "binary"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        # AITaskEventsView returns a StreamingHttpResponse, so DRF never
+        # serializes the event body. The renderer is needed only for content
+        # negotiation before the view is called.
+        return data
 
 
 # ──────────────────────────────────────────────
@@ -155,6 +172,111 @@ class ChatAskView(APIView):
         }, status=status.HTTP_202_ACCEPTED)
 
 
+class AITaskListView(generics.ListAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = AITaskSerializer
+
+    def get_queryset(self):
+        queryset = ai_tasks.objects.filter(user=self.request.user).select_related("session")
+        requested = self.request.query_params.get("status")
+        if requested in {"queued", "running", "success", "failed", "cancelled"}:
+            queryset = queryset.filter(status=requested)
+        return queryset
+
+
+class DocumentFeedView(APIView):
+    """Return uploaded inputs and generated artifacts in one UI-friendly feed."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = []
+        for item in attachments.objects.filter(message__session__user=request.user).select_related("message"):
+            rows.append({
+                "id": str(item.id), "name": item.file_name,
+                "type": item.file_type or "file", "path": str(item.file),
+                "size": item.file_size, "status": "uploaded",
+                "created_at": item.created_at.isoformat(),
+                "download_url": request.build_absolute_uri(f"/api/v1/chats/attachments/{item.id}/download/"),
+            })
+        for item in artifacts.objects.filter(task__user=request.user):
+            artifact_path = Path(str(item.path)).resolve()
+            rows.append({
+                "id": str(item.id), "name": item.name,
+                "type": item.artifact_type or "file", "path": item.path,
+                "size": artifact_path.stat().st_size if artifact_path.is_file() else 0,
+                "status": item.verification_status or "generated",
+                "created_at": item.created_at.isoformat(),
+                "hash": item.sha256,
+                "download_url": request.build_absolute_uri(f"/api/v1/chats/artifacts/{item.id}/download/"),
+            })
+        rows.sort(key=lambda value: value["created_at"], reverse=True)
+        return Response(rows)
+
+
+class DocumentUploadView(APIView):
+    permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, FormParser, MultiPartParser]
+
+    def post(self, request):
+        uploaded = request.FILES.getlist("files")
+        if not uploaded:
+            return Response({"detail": "Attach at least one file."}, status=status.HTTP_400_BAD_REQUEST)
+        session = chat_sessions.objects.create(user=request.user, chat_title="Document Ingestion")
+        message = chats.objects.create(session=session, role="system", content="Document ingestion", message_type="file")
+        saved = _save_uploaded_files(message, uploaded)
+        return Response({"files": saved, "session_id": str(session.id)}, status=status.HTTP_201_CREATED)
+
+
+class AttachmentDownloadView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, id):
+        try:
+            attachment = attachments.objects.get(id=id, message__session__user=request.user)
+        except attachments.DoesNotExist:
+            return Response({"detail": "Attachment not found."}, status=status.HTTP_404_NOT_FOUND)
+        path = Path(str(attachment.file)).resolve()
+        root = Path(settings.AI_SHARED_UPLOAD_DIR).resolve()
+        if not path.is_file() or not (path == root or root in path.parents):
+            return Response({"detail": "Attachment file is unavailable."}, status=status.HTTP_404_NOT_FOUND)
+        return FileResponse(path.open("rb"), as_attachment=True, filename=attachment.file_name)
+
+
+class AuditFeedView(APIView):
+    """Build an authenticated provenance feed from durable chat/task records."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        rows = []
+        for task in ai_tasks.objects.filter(user=request.user):
+            rows.append({
+                "id": f"task-{task.id}", "artifactId": str(task.id),
+                "artifactName": task.request_text[:120], "action": "AGENT_EXECUTED",
+                "actor": "AEGIS AI", "model": task.model_used,
+                "timestamp": task.updated_at.isoformat(), "hash": "",
+                "blockchainStatus": "not_recorded",
+            })
+        for item in artifacts.objects.filter(task__user=request.user):
+            rows.append({
+                "id": f"artifact-{item.id}", "artifactId": str(item.id),
+                "artifactName": item.name, "action": "DOCUMENT_GENERATED",
+                "actor": "AEGIS AI", "model": item.metadata.get("model", "") if isinstance(item.metadata, dict) else "",
+                "timestamp": item.created_at.isoformat(), "hash": item.sha256,
+                "blockchainStatus": "not_recorded",
+            })
+        for item in attachments.objects.filter(message__session__user=request.user):
+            rows.append({
+                "id": f"upload-{item.id}", "artifactId": str(item.id),
+                "artifactName": item.file_name, "action": "DOCUMENT_UPLOADED",
+                "actor": str(request.user), "timestamp": item.created_at.isoformat(),
+                "hash": "", "blockchainStatus": "not_recorded",
+            })
+        rows.sort(key=lambda value: value["timestamp"], reverse=True)
+        return Response(rows)
+
+
 class AITaskDetailView(generics.RetrieveAPIView):
     permission_classes = [IsAuthenticated]
     serializer_class = AITaskSerializer
@@ -219,7 +341,23 @@ class AITaskPermissionListView(generics.ListAPIView):
     serializer_class = PermissionRequestSerializer
 
     def get_queryset(self):
-        return permission_requests.objects.filter(task__id=self.kwargs["id"], task__user=self.request.user)
+        visibility = Q() if self.request.user.is_staff else Q(task__user=self.request.user)
+        return permission_requests.objects.filter(task__id=self.kwargs["id"]).filter(visibility)
+
+
+class PermissionQueueView(generics.ListAPIView):
+    """Approval inbox for the authenticated owner or an administrator."""
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = PermissionRequestSerializer
+
+    def get_queryset(self):
+        visibility = Q() if self.request.user.is_staff else Q(task__user=self.request.user)
+        queryset = permission_requests.objects.filter(visibility)
+        requested = self.request.query_params.get("status")
+        if requested in {"pending", "approved", "denied", "expired"}:
+            queryset = queryset.filter(status=requested)
+        return queryset.select_related("task", "user", "decided_by")
 
 
 class AITaskPermissionDecisionView(APIView):
@@ -227,8 +365,9 @@ class AITaskPermissionDecisionView(APIView):
 
     def post(self, request, id, request_id, decision):
         try:
+            query = Q() if request.user.is_staff else Q(task__user=request.user)
             permission = permission_requests.objects.select_related("task").get(
-                request_id=request_id, task__id=id, task__user=request.user,
+                Q(request_id=request_id, task__id=id) & query
             )
         except permission_requests.DoesNotExist:
             return Response({"detail": "Permission request not found."}, status=status.HTTP_404_NOT_FOUND)
@@ -258,6 +397,7 @@ class AITaskEventsView(APIView):
     """Authenticated Django SSE proxy for the per-session JSONL event log."""
 
     permission_classes = [IsAuthenticated]
+    renderer_classes = [EventStreamRenderer]
 
     def get(self, request, id):
         try:
@@ -280,6 +420,13 @@ class AITaskEventsView(APIView):
                         try:
                             event = json.loads(line)
                         except json.JSONDecodeError:
+                            continue
+                        # A session log contains events for every task in the
+                        # conversation.  The browser is listening for one
+                        # task only, so never leak an older task's assistant
+                        # message or failure into the current SSE stream.
+                        event_task_id = event.get("task_id")
+                        if event_task_id is not None and str(event_task_id) != str(task.id):
                             continue
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
                 current_status = ai_tasks.objects.filter(id=task.id).values_list("status", flat=True).first()
