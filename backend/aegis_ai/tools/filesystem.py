@@ -119,8 +119,7 @@ class FilesystemTools:
             occurrences = content.count(old_text)
             if occurrences != 1:
                 return self._error("EditMismatch", f"Expected one match, found {occurrences}.", target)
-            # Preserve the file's existing newline bytes on Windows.
-            target.write_bytes(content.replace(old_text, new_text, 1).encode("utf-8"))
+            target.write_text(content.replace(old_text, new_text, 1), encoding="utf-8")
             return {"ok": True, "tool": "edit_file", "path": str(target)}
         except OSError as exc: return self._error("FilesystemError", str(exc), target)
 
