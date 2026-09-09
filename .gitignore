@@ -34,3 +34,4 @@ backend/logs/sessions/*.jsonl
 __pycache__/
 *.py[cod]
 *$py.class
+backend/shared/uploads

@@ -192,12 +192,14 @@ class OllamaProvider(ModelProvider):
                 opts[k] = kwargs[k]
         payload = {"model": self.config.model, "messages": payload_messages, "stream": stream,
                    "options": opts}
-        # Ollama rejects the presence of the `think` field for models that do
-        # not advertise thinking support (notably qwen3-coder). Omitting the
-        # field is the portable way to request ordinary generation; only send
-        # it when the caller explicitly enables visible thinking.
-        if think:
-            payload["think"] = True
+        # Models that support thinking need an explicit false value for normal
+        # answers.  Omitting this field makes newer Ollama models such as
+        # qwen3.5 enter their default thinking mode, which can consume the
+        # entire output budget without emitting usable content. Models that do
+        # not support thinking still reject the field, so keep omitting it for
+        # those models.
+        if self.config.supports_thinking:
+            payload["think"] = bool(think)
         return payload
 
     # -- Health ---------------------------------------------------------

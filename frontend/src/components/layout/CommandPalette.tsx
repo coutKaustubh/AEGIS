@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, FileText, ArrowRight, LayoutDashboard, MessageSquare, BookOpen, Bot, CheckCircle, Shield, Server, Settings, Users, X } from 'lucide-react';
+import { Search, FileText, ArrowRight, LayoutDashboard, MessageSquare, BookOpen, Bot, CheckCircle, Server, Settings, Users, X } from 'lucide-react';
 import { mockDocuments } from '@/data/mock-data';
 import { useAuth } from '@/context/AuthContext';
 
@@ -83,14 +83,6 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
       onSelect: () => navigate('/approvals'),
     },
     {
-      id: 'nav-audit',
-      title: 'Audit & Provenance',
-      subtitle: 'Immutable cryptographic ledger and hash verification',
-      category: 'Navigation',
-      icon: <Shield className="h-4 w-4" />,
-      onSelect: () => navigate('/audit'),
-    },
-    {
       id: 'nav-system',
       title: 'System Sovereignty',
       subtitle: 'Local air-gap enforcement, node health and hardware',
@@ -113,7 +105,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
     {
       id: 'nav-settings',
       title: 'Settings',
-      subtitle: 'Workbench configurations, models and blockchain hooks',
+      subtitle: 'Workbench configurations and models',
       category: 'Navigation',
       icon: <Settings className="h-4 w-4" />,
       onSelect: () => navigate('/settings'),

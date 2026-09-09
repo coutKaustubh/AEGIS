@@ -16,8 +16,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
-import { ArtifactHash } from '@/components/blockchain/ArtifactHash';
-import { BlockchainRecord } from '@/components/blockchain/BlockchainRecord';
+import { HashValue } from '@/components/ui/HashValue';
 
 export default function DocumentDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -165,7 +164,7 @@ Immediate derating or plate doubler repair required prior to turnaround closure.
                   <div className="space-y-2 text-xs">
                     <div className="flex items-center justify-between py-1 border-b border-border-subtle">
                       <span className="text-text-muted">SHA-256 Digest</span>
-                      <ArtifactHash hash={doc.hash || '0xa3f8c2d1e9b47f3a6c8d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1'} length={12} />
+                      <HashValue hash={doc.hash || '0xa3f8c2d1e9b47f3a6c8d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1'} length={12} />
                     </div>
                     <div className="flex items-center justify-between py-1 border-b border-border-subtle">
                       <span className="text-text-muted">Vault Storage Path</span>
@@ -239,28 +238,6 @@ Immediate derating or plate doubler repair required prior to turnaround closure.
 
                 <Card padding="md" className="bg-bg-primary font-mono text-[11px] leading-relaxed text-text-muted whitespace-pre-wrap max-h-96 overflow-y-auto">
                   {filteredOcrText}
-                </Card>
-              </div>
-            ),
-          },
-          {
-            key: 'blockchain',
-            label: 'Provenance & Ledger',
-            content: (
-              <div className="space-y-4 pt-2">
-                <BlockchainRecord
-                  transactionHash="0x892a7b3c1d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
-                  blockNumber={1489201}
-                  timestamp={doc.uploadedAt}
-                  contentHash={doc.hash}
-                  status="confirmed"
-                />
-
-                <Card padding="md" className="text-xs space-y-2 text-text-muted">
-                  <div className="text-text-primary font-medium">Proof of Authority Guarantee</div>
-                  <p>
-                    Every state transition, metadata edit, and compliance certification on this document is timestamped and anchored into the internal private consortium ledger. Proofs can be exported for statutory audit.
-                  </p>
                 </Card>
               </div>
             ),

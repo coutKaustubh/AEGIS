@@ -2,7 +2,6 @@ import type { Conversation, Message, AgentActivity, TaskInfo, Citation, Generate
 import type { AgentExecution } from '@/types/agent';
 import type { Document } from '@/types/document';
 import type { Approval } from '@/types/approval';
-import type { AuditRecord, VerificationResult } from '@/types/audit';
 import type { SystemComponent, DashboardMetrics, RecentTask, SovereigntyMetrics, User } from '@/types/system';
 import type { KnowledgeSearchResult } from '@/types/knowledge';
 
@@ -41,7 +40,6 @@ export const mockSystemComponents: SystemComponent[] = [
   { id: 'ocr', name: 'OCR Engine', status: 'operational', detail: 'Tesseract + DocTR active', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'kb', name: 'Knowledge Base', status: 'operational', detail: '856 documents indexed', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'sandbox', name: 'Sandbox', status: 'warning', detail: 'High memory usage', lastChecked: '2026-09-03T14:55:00Z' },
-  { id: 'audit', name: 'Audit Ledger', status: 'operational', detail: '4,832 records', lastChecked: '2026-09-03T14:55:00Z' },
 ];
 
 export const mockSovereigntyMetrics: SovereigntyMetrics = {
@@ -177,7 +175,6 @@ export const mockAgentExecutions: AgentExecution[] = [
       { id: 'n7', name: 'Reasoning Model', type: 'reasoning', status: 'completed', model: 'Mistral-7B', duration: '18s', position: { x: 400, y: 560 } },
       { id: 'n8', name: 'Document Generation', type: 'document', status: 'completed', duration: '5s', position: { x: 400, y: 680 } },
       { id: 'n9', name: 'Human Review', type: 'review', status: 'completed', duration: '45s', position: { x: 400, y: 800 } },
-      { id: 'n10', name: 'Blockchain Audit', type: 'blockchain', status: 'completed', duration: '1.2s', position: { x: 400, y: 920 } },
     ],
     edges: [
       { id: 'e1', source: 'n1', target: 'n2' },
@@ -189,7 +186,6 @@ export const mockAgentExecutions: AgentExecution[] = [
       { id: 'e7', source: 'n6', target: 'n7' },
       { id: 'e8', source: 'n7', target: 'n8' },
       { id: 'e9', source: 'n8', target: 'n9' },
-      { id: 'e10', source: 'n9', target: 'n10' },
     ],
     timeline: [
       { id: 'tl-01', nodeId: 'n1', nodeName: 'User Request', action: 'Request received', timestamp: '2026-09-03T14:30:00Z', status: 'completed' },
@@ -201,7 +197,6 @@ export const mockAgentExecutions: AgentExecution[] = [
       { id: 'tl-07', nodeId: 'n7', nodeName: 'Reasoning Model', action: 'Cross-referenced findings with standards', timestamp: '2026-09-03T14:30:16Z', duration: '18s', status: 'completed' },
       { id: 'tl-08', nodeId: 'n8', nodeName: 'Document Generation', action: 'Generated DOCX report', timestamp: '2026-09-03T14:30:34Z', duration: '5s', status: 'completed' },
       { id: 'tl-09', nodeId: 'n9', nodeName: 'Human Review', action: 'Approved by operator', timestamp: '2026-09-03T14:30:39Z', duration: '45s', status: 'completed' },
-      { id: 'tl-10', nodeId: 'n10', nodeName: 'Blockchain Audit', action: 'Hash recorded on-chain', timestamp: '2026-09-03T14:31:24Z', duration: '1.2s', status: 'completed' },
     ],
   },
   {
@@ -384,7 +379,6 @@ export const mockApprovals: Approval[] = [
       { documentName: 'Corrosion_Standards_BPCL.pdf', page: 12, relevance: 0.82, snippet: 'Minimum allowable wall thickness...' },
     ],
     artifactHash: '0xa3f8c2d1e9b47f3a',
-    blockchainTxHash: '0x7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8',
   },
   {
     id: 'apr-002',
@@ -461,46 +455,3 @@ export const mockApprovals: Approval[] = [
     createdAt: '2026-09-03T07:00:00Z',
   },
 ];
-
-// ─── Audit Records ─────────────────────────────────────────────────────────────
-
-export const mockAuditRecords: AuditRecord[] = [
-  { id: 'aud-001', artifactId: 'doc-001', artifactName: 'Unit 4 Inspection Report', action: 'DOCUMENT_UPLOADED', actor: 'Rajesh Kumar', timestamp: '2026-09-01T09:00:00Z', hash: '0xa3f8c2d1e9b47f3a6c8d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1', blockchainStatus: 'confirmed', transactionHash: '0x7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8', blockNumber: 18234567 },
-  { id: 'aud-002', artifactId: 'doc-001', artifactName: 'Unit 4 Inspection Report', action: 'AI_ANALYSIS', actor: 'AEGIS AI', model: 'Mistral-7B', timestamp: '2026-09-01T09:15:00Z', hash: '0xb7e1d4f2a8c39b6e5d4c3f2a1b0e9d8c7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2', blockchainStatus: 'confirmed', transactionHash: '0x8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9', blockNumber: 18234568 },
-  { id: 'aud-003', artifactId: 'art-001', artifactName: 'Inspection Analysis Report', action: 'DOCUMENT_GENERATED', actor: 'AEGIS AI', model: 'Mistral-7B', timestamp: '2026-09-01T09:16:00Z', hash: '0xc9d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2', blockchainStatus: 'confirmed', transactionHash: '0x9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0', blockNumber: 18234569 },
-  { id: 'aud-004', artifactId: 'art-001', artifactName: 'Inspection Analysis Report', action: 'HUMAN_APPROVED', actor: 'Rajesh Kumar', timestamp: '2026-09-01T10:00:00Z', hash: '0xd1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2', blockchainStatus: 'confirmed', transactionHash: '0xa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1', blockNumber: 18234570 },
-  { id: 'aud-005', artifactId: 'doc-002', artifactName: 'Safety Manual — H2S', action: 'KNOWLEDGE_INDEXED', actor: 'AEGIS System', timestamp: '2026-08-15T10:35:00Z', hash: '0xe3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4', blockchainStatus: 'confirmed', transactionHash: '0xb1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2', blockNumber: 18234500 },
-  { id: 'aud-006', artifactId: 'doc-006', artifactName: 'P&ID Rev.12', action: 'AI_ANALYSIS', actor: 'AEGIS AI', model: 'qwen3-vl:4b', timestamp: '2026-08-20T10:00:00Z', hash: '0xf5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6', blockchainStatus: 'confirmed', transactionHash: '0xc2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3', blockNumber: 18234520 },
-  { id: 'aud-007', artifactId: 'doc-006', artifactName: 'P&ID Rev.12 Analysis', action: 'HUMAN_REJECTED', actor: 'Amit Patel', timestamp: '2026-08-20T11:30:00Z', hash: '0xa7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8', blockchainStatus: 'confirmed', transactionHash: '0xd3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4', blockNumber: 18234521 },
-  { id: 'aud-008', artifactId: 'doc-007', artifactName: 'Board Approval Note', action: 'DOCUMENT_UPLOADED', actor: 'Anand Mehta', timestamp: '2026-09-03T08:00:00Z', hash: '0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2', blockchainStatus: 'pending', transactionHash: '0xe4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5', blockNumber: 18234580 },
-  { id: 'aud-009', artifactId: 'exec-001', artifactName: 'Agent Execution — Inspection Analysis', action: 'AGENT_EXECUTED', actor: 'AEGIS AI', model: 'Mistral-7B', timestamp: '2026-09-03T14:32:15Z', hash: '0xb2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3', blockchainStatus: 'confirmed', transactionHash: '0xf5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6', blockNumber: 18234585 },
-  { id: 'aud-010', artifactId: 'art-001', artifactName: 'Inspection Analysis Report', action: 'ARTIFACT_VERIFIED', actor: 'Rajesh Kumar', timestamp: '2026-09-03T15:00:00Z', hash: '0xc3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4', blockchainStatus: 'confirmed', transactionHash: '0xa6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7', blockNumber: 18234590 },
-];
-
-// ─── Verification ──────────────────────────────────────────────────────────────
-
-export const mockVerificationSuccess: VerificationResult = {
-  artifactId: 'art-001',
-  artifactName: 'Inspection_Analysis_Unit4.docx',
-  localHash: '0xa3f8c2d1e9b47f3a6c8d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1',
-  recordedHash: '0xa3f8c2d1e9b47f3a6c8d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1',
-  match: true,
-  blockchainNetwork: 'AEGIS Private Chain (MOCK)',
-  transactionHash: '0x7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8',
-  blockNumber: 18234567,
-  timestamp: '2026-09-01T09:00:00Z',
-  action: 'DOCUMENT_UPLOADED',
-};
-
-export const mockVerificationFailure: VerificationResult = {
-  artifactId: 'art-002',
-  artifactName: 'Findings_Summary.xlsx',
-  localHash: '0xb7e1d4f2a8c39b6e5d4c3f2a1b0e9d8c7f6a5b4c3d2e1f0a9b8c7d6e5f4a3b2',
-  recordedHash: '0xff00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff',
-  match: false,
-  blockchainNetwork: 'AEGIS Private Chain (MOCK)',
-  transactionHash: '0x8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9',
-  blockNumber: 18234568,
-  timestamp: '2026-09-01T09:16:00Z',
-  action: 'DOCUMENT_GENERATED',
-};

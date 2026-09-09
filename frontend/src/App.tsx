@@ -12,7 +12,6 @@ import DocumentDetailPage from '@/pages/DocumentDetailPage';
 import KnowledgePage from '@/pages/KnowledgePage';
 import ApprovalsPage from '@/pages/ApprovalsPage';
 import ApprovalDetailPage from '@/pages/ApprovalDetailPage';
-import AuditPage from '@/pages/AuditPage';
 import SovereigntyPage from '@/pages/SovereigntyPage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import SettingsPage from '@/pages/SettingsPage';
@@ -53,10 +52,7 @@ export default function App() {
             <Route path="approvals" element={<ApprovalsPage />} />
             <Route path="approvals/:id" element={<ApprovalDetailPage />} />
 
-            {/* Security, Provenance & Sovereignty */}
-            <Route path="audit" element={<AuditPage />} />
-            <Route path="verify" element={<Navigate to="/audit?verify=true" replace />} />
-            <Route path="audit/verify" element={<Navigate to="/audit?verify=true" replace />} />
+            {/* Security & Sovereignty */}
             <Route path="system" element={<SovereigntyPage />} />
             <Route path="sovereignty" element={<Navigate to="/system" replace />} />
 
