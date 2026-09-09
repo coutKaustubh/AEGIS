@@ -564,7 +564,7 @@ def run_inspect_report(
                 response = httpx.post(
                     f"{os.getenv('AEGIS_OLLAMA_BASE_URL', 'http://localhost:11434').rstrip('/')}/api/generate",
                     json={
-                        "model": os.getenv("AEGIS_MODEL_LIGHTWEIGHT", "Qwen2.5:1.5b"),
+                        "model": os.getenv("AEGIS_MODEL_LIGHTWEIGHT", "llama3.2:1b"),
                         "prompt": "Summarize this OCR text in 5 concise factual bullet points. Do not invent details.\n\n" + summary_text,
                         "stream": False,
                     },

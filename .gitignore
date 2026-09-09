@@ -23,7 +23,15 @@ db.sqlite3-journal
 .vscode/
 .idea/
 .DS_Store
+
+logs/
+shared/
 Thumbs.db
 backend/logs/sessions/*.jsonl
 
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
 backend/shared/uploads

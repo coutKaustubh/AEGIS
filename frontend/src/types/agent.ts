@@ -24,7 +24,7 @@ export interface AgentExecution {
 export interface AgentNode {
   id: string;
   name: string;
-  type: 'user' | 'master' | 'planner' | 'ocr' | 'vision' | 'rag' | 'reasoning' | 'document' | 'review' | 'blockchain';
+  type: 'user' | 'master' | 'planner' | 'ocr' | 'vision' | 'rag' | 'reasoning' | 'document' | 'review';
   status: 'pending' | 'running' | 'completed' | 'failed';
   model?: string;
   tool?: string;

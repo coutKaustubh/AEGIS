@@ -15,5 +15,4 @@ export const runtimeService = {
   cancelJob: (id: string) => apiClient.delete(`/chats/jobs/${id}/`),
   evaluationSummary: () => apiClient.get('/chats/evaluations/summary/'),
   kubernetesManifest: (params: Record<string, string | number | boolean> = {}) => apiClient.get(`/chats/kubernetes/manifest/?${new URLSearchParams(Object.entries(params).map(([key, value]) => [key, String(value)]))}`),
-  verifyAudit: () => apiClient.get('/chats/audit/verify/'),
 };

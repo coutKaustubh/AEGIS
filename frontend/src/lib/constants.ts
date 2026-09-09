@@ -12,8 +12,6 @@ export const NAV_ITEMS = [
   { type: 'divider' as const },
   { label: 'Agents', path: '/agents', icon: 'Bot' },
   { label: 'Approvals', path: '/approvals', icon: 'CheckCircle' },
-  { type: 'divider' as const },
-  { label: 'Audit', path: '/audit', icon: 'Shield' },
   { label: 'System', path: '/system', icon: 'Server' },
   { type: 'divider' as const },
   { label: 'Users', path: '/users', icon: 'Users', adminOnly: true },

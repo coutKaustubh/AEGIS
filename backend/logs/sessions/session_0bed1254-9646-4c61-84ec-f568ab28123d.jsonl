@@ -1,1 +1,0 @@
-{"timestamp": "2026-09-09T00:57:48.169510+00:00", "event": "ai_task_failed", "session_id": "0bed1254-9646-4c61-84ec-f568ab28123d", "user": "1", "task_id": "02aa3614-f6c3-4806-b320-bff9b8fbf4ff", "metadata": {"status": "failed", "error": "Task execution timed out or worker process terminated.", "reason": "stale_recovery"}, "error": null}
