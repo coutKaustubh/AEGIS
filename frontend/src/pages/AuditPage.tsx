@@ -8,11 +8,6 @@ import {
   Loader2,
 } from 'lucide-react';
 import { formatRelativeTime } from '@/lib/utils';
-import {
-  mockAuditRecords,
-  mockVerificationSuccess,
-  mockVerificationFailure,
-} from '@/data/mock-data';
 import type { VerificationResult } from '@/types/audit';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
@@ -33,9 +28,9 @@ export default function AuditPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAction, setSelectedAction] = useState<string>('All');
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(
-    mockAuditRecords[0]?.id || null
+    null
   );
-  const [records, setRecords] = useState(mockAuditRecords);
+  const [records, setRecords] = useState<any[]>([]);
 
   useEffect(() => {
     void auditService.list().then((loaded) => {
@@ -54,7 +49,7 @@ export default function AuditPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [verificationError, setVerificationError] = useState<string | null>(null);
   const [verificationOutcome, setVerificationOutcome] = useState<VerificationResult | null>(
-    initialVerifyParam ? mockVerificationSuccess : null
+    null
   );
 
   const filteredRecords = useMemo(() => {
@@ -77,21 +72,10 @@ export default function AuditPage() {
     setVerificationError(null);
     setVerificationOutcome(null);
 
-    setTimeout(() => {
-      if (sampleType === 'valid') {
-        setVerificationOutcome(mockVerificationSuccess);
-      } else if (sampleType === 'tampered') {
-        setVerificationOutcome(mockVerificationFailure);
-      } else {
-        // Custom verification logic
-        setVerificationOutcome({
-          ...mockVerificationSuccess,
-          localHash: customHash || mockVerificationSuccess.localHash,
-          match: customHash.length > 20,
-        });
-      }
-      setIsVerifying(false);
-    }, 500);
+    void auditService.verify(selectedRecord?.artifactId || initialVerifyParam || sampleType)
+      .then((result) => setVerificationOutcome(result))
+      .catch((error) => setVerificationError(error instanceof Error ? error.message : 'Verification failed.'))
+      .finally(() => setIsVerifying(false));
   };
 
   const handleVerifyUploadedFile = async () => {
@@ -298,7 +282,7 @@ export default function AuditPage() {
                       </Button>
                     </div>
                     <p className="text-[11px] text-text-dim">
-                      The file is hashed locally in the browser. The document itself is never sent to the blockchain.
+                      The file is hashed locally in the browser. Verification is checked against the local AEGIS audit chain; the document itself never leaves this machine.
                     </p>
                   </div>
 
@@ -316,7 +300,7 @@ export default function AuditPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setCustomHash(mockVerificationSuccess.recordedHash);
+                        setCustomHash('');
                         handleRunVerification('valid');
                       }}
                       className="px-2.5 py-1 rounded text-xs bg-bg-subtle/50 hover:bg-bg-subtle text-status-success border border-status-success/30 transition-colors"
@@ -326,7 +310,7 @@ export default function AuditPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        setCustomHash(mockVerificationFailure.localHash);
+                        setCustomHash('');
                         handleRunVerification('tampered');
                       }}
                       className="px-2.5 py-1 rounded text-xs bg-bg-subtle/50 hover:bg-bg-subtle text-status-danger border border-status-danger/30 transition-colors"
@@ -354,8 +338,8 @@ export default function AuditPage() {
                           </div>
                           <div className="text-[11px] text-text-dim">
                             {verificationOutcome.match
-                              ? 'The local file hash matches the on-chain ledger state perfectly.'
-                              : 'Local content does not match the immutable blockchain record. File may be tampered.'}
+                              ? 'The local file passed the AEGIS runtime audit-chain verification.'
+                              : 'The runtime audit-chain verification did not match this local file.'}
                           </div>
                         </div>
                       </div>

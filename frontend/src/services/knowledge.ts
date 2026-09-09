@@ -14,7 +14,17 @@ export const knowledgeService = {
       );
     }
     const { apiClient } = await import('./api');
-    return apiClient.post('/knowledge/search', query);
+    const rows = await apiClient.post<any[]>('/chats/knowledge/search/', { query: query.query, top_k: 10 });
+    return rows.map((row) => ({
+      id: row.metadata?.chunk_id || row.id,
+      documentId: row.metadata?.document_id || row.source,
+      documentName: row.source || 'Indexed document',
+      department: row.metadata?.department || 'Knowledge base',
+      relevantPages: row.metadata?.page ? [Number(row.metadata.page)] : [],
+      relevanceScore: Number(row.score || 0),
+      lastUpdated: row.metadata?.last_updated || new Date().toISOString(),
+      snippet: row.content || row.snippet || '',
+    }));
   },
 
   async ask(query: string): Promise<KnowledgeAnswer> {
@@ -30,6 +40,6 @@ export const knowledgeService = {
       };
     }
     const { apiClient } = await import('./api');
-    return apiClient.post('/knowledge/ask', { query });
+    return apiClient.post('/chats/knowledge/ask/', { query });
   },
 };

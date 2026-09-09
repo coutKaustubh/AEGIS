@@ -35,6 +35,7 @@ export interface GeneratedArtifact {
   size: number;
   hash?: string;
   downloadUrl?: string;
+  preview?: string | null;
 }
 
 export interface ToolCall {

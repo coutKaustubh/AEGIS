@@ -10,7 +10,6 @@ import asyncio
 import base64
 import io
 import json
-import re
 from pathlib import Path
 from typing import Any, AsyncIterator
 
@@ -51,7 +50,7 @@ class OllamaProvider(ModelProvider):
                 base_url=self.base_url,
                 temperature=temperature,
                 num_ctx=self.config.context_length,
-                reasoning=True,
+                reasoning=self.config.supports_thinking,
             )
         return self._chat_model_cache[cache_key]
 
@@ -65,7 +64,7 @@ class OllamaProvider(ModelProvider):
         messages: list[dict[str, Any]],
         **kwargs: Any,
     ) -> ModelResponse:
-        timeout_seconds = float(kwargs.get("timeout", 360.0))
+        timeout_seconds = float(kwargs.get("timeout", os.getenv("AEGIS_MODEL_TIMEOUT_SECONDS", "90")))
         clean_kwargs = {k: v for k, v in kwargs.items() if k not in ("image_paths", "encoded_images", "think", "options")}
         payload = self._chat_payload(
             messages, stream=False, image_paths=kwargs.get("image_paths"),
@@ -82,23 +81,12 @@ class OllamaProvider(ModelProvider):
         except httpx.TimeoutException as exc:
             raise ModelTimeoutError(f"Ollama timed out after {timeout_seconds}s") from exc
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.text.strip()[:800]
+            detail = exc.response.text.strip()[:500]
             suffix = f": {detail}" if detail else ""
-            raise ProviderError(
-                f"Ollama chat request failed with HTTP {exc.response.status_code}{suffix}"
-            ) from exc
+            raise ProviderError(f"Ollama chat request failed: {exc}{suffix}") from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise ProviderError(f"Ollama chat request failed: {exc}") from exc
-        message = data.get("message", {}) or {}
-        content = str(message.get("content", "")).strip()
-        # qwen3-vl can spend a bounded request budget in its reasoning field
-        # and return an empty content field even when Ollama completed
-        # successfully.  Preserve that local answer instead of converting a
-        # valid vision response into a generic "no usable output" failure.
-        if not content:
-            thinking = str(message.get("thinking", "")).strip()
-            if thinking:
-                content = re.sub(r"</?think>", "", thinking, flags=re.I).strip()
+        content = str(data.get("message", {}).get("content", "")).strip()
         if not content:
             raise EmptyGenerationError("Model returned no usable output")
         return ModelResponse(content=content, model=self.config.model, raw=data)
@@ -115,7 +103,7 @@ class OllamaProvider(ModelProvider):
         self, messages: list[dict[str, Any]], **kwargs: Any
     ) -> AsyncIterator[dict[str, Any]]:
         """Stream Ollama thinking/content events without buffering the response."""
-        timeout_seconds = float(kwargs.get("timeout", 360.0))
+        timeout_seconds = float(kwargs.get("timeout", os.getenv("AEGIS_MODEL_TIMEOUT_SECONDS", "90")))
         clean_kwargs = {k: v for k, v in kwargs.items() if k not in ("image_paths", "encoded_images", "think", "options")}
         payload = self._chat_payload(
             messages, stream=True, image_paths=kwargs.get("image_paths"),
@@ -130,7 +118,18 @@ class OllamaProvider(ModelProvider):
             async with asyncio.timeout(timeout_seconds):
                 async with httpx.AsyncClient(timeout=client_timeout) as client:
                     async with client.stream("POST", f"{self.base_url}/api/chat", json=payload) as response:
-                        response.raise_for_status()
+                        try:
+                            response.raise_for_status()
+                        except httpx.HTTPStatusError as exc:
+                            # Consume the body while the streaming context is
+                            # still open so Ollama's useful validation message
+                            # is preserved without triggering ``response.text``
+                            # on an unread stream.
+                            body = (await response.aread()).decode("utf-8", errors="replace").strip()[:500]
+                            detail = f": {body}" if body else ""
+                            raise ProviderError(
+                                f"Ollama streaming request failed: HTTP {response.status_code}{detail}"
+                            ) from exc
                         async for line in response.aiter_lines():
                             if not line:
                                 continue
@@ -151,10 +150,10 @@ class OllamaProvider(ModelProvider):
         except (TimeoutError, httpx.TimeoutException) as exc:
             raise ModelTimeoutError(f"Ollama stream exceeded {timeout_seconds:g}s deadline") from exc
         except httpx.HTTPStatusError as exc:
-            detail = exc.response.text.strip()[:800]
-            suffix = f": {detail}" if detail else ""
+            # Defensive fallback for status errors raised outside the stream
+            # context. The body may be unreadable here, so never access text.
             raise ProviderError(
-                f"Ollama streaming request failed with HTTP {exc.response.status_code}{suffix}"
+                f"Ollama streaming request failed: HTTP {exc.response.status_code}"
             ) from exc
         except httpx.HTTPError as exc:
             raise ProviderError(f"Ollama streaming request failed: {exc}") from exc
@@ -191,9 +190,15 @@ class OllamaProvider(ModelProvider):
         for k in ("num_ctx", "num_predict", "temperature", "top_p", "top_k"):
             if kwargs.get(k) is not None:
                 opts[k] = kwargs[k]
-        return {"model": self.config.model, "messages": payload_messages, "stream": stream,
-                "think": think,
-                "options": opts}
+        payload = {"model": self.config.model, "messages": payload_messages, "stream": stream,
+                   "options": opts}
+        # Ollama rejects the presence of the `think` field for models that do
+        # not advertise thinking support (notably qwen3-coder). Omitting the
+        # field is the portable way to request ordinary generation; only send
+        # it when the caller explicitly enables visible thinking.
+        if think:
+            payload["think"] = True
+        return payload
 
     # -- Health ---------------------------------------------------------
 

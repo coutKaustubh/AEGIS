@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+from django.conf import settings
 
 from rest_framework import serializers
 
@@ -12,6 +15,19 @@ class ChatSerializer(serializers.ModelSerializer):
     session, role, content, message_type, and metadata.
     """
 
+    attachments = serializers.SerializerMethodField()
+
+    def get_attachments(self, obj):
+        request = self.context.get("request")
+        rows = []
+        for item in obj.attachments.all():
+            url = None
+            if request is not None:
+                from django.urls import reverse
+                url = request.build_absolute_uri(reverse("attachment_download", kwargs={"id": item.id}))
+            rows.append({"id": str(item.id), "name": item.file_name, "type": "document", "size": item.file_size, "url": url})
+        return rows
+
     class Meta:
         model = chats
         fields = [
@@ -22,6 +38,7 @@ class ChatSerializer(serializers.ModelSerializer):
             "message_type",
             "metadata",
             "created_at",
+            "attachments",
         ]
         read_only_fields = ["id", "created_at"]
 
@@ -46,10 +63,12 @@ class ChatSessionListSerializer(serializers.ModelSerializer):
 class ChatSessionDetailSerializer(serializers.ModelSerializer):
     """
     Detailed serializer for a single ChatSession.
-    Includes nested chats in chronological order.
+    Includes nested chats in chronological order and the most recent AI task.
     """
 
     chats = ChatSerializer(many=True, read_only=True)
+    latest_task_id = serializers.SerializerMethodField()
+    latest_task = serializers.SerializerMethodField()
 
     class Meta:
         model = chat_sessions
@@ -59,8 +78,20 @@ class ChatSessionDetailSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
             "chats",
+            "latest_task_id",
+            "latest_task",
         ]
         read_only_fields = ["id", "created_at", "updated_at"]
+
+    def get_latest_task_id(self, obj):
+        task = obj.ai_tasks.order_by("-created_at").first()
+        return str(task.id) if task else None
+
+    def get_latest_task(self, obj):
+        task = obj.ai_tasks.order_by("-created_at").first()
+        if not task:
+            return None
+        return AITaskSerializer(task, context=self.context).data
 
 
 class CreateChatSerializer(serializers.Serializer):
@@ -108,6 +139,7 @@ class AITaskSerializer(serializers.ModelSerializer):
 
 class ArtifactSerializer(serializers.ModelSerializer):
     download_url = serializers.SerializerMethodField()
+    preview = serializers.SerializerMethodField()
 
     def get_download_url(self, obj):
         request = self.context.get("request")
@@ -116,9 +148,27 @@ class ArtifactSerializer(serializers.ModelSerializer):
         from django.urls import reverse
         return request.build_absolute_uri(reverse("artifact_download", kwargs={"id": obj.id}))
 
+    def get_preview(self, obj):
+        """Expose small text artifacts inline while retaining the download link."""
+        if str(obj.artifact_type).lower() not in {"txt", "json", "md", "markdown", "csv", "log"}:
+            return None
+        path = Path(str(obj.path))
+        if not path.is_absolute():
+            root = Path(settings.AI_ARTIFACT_ROOT).resolve()
+            if path.parts and path.parts[0] == root.name:
+                path = root.joinpath(*path.parts[1:])
+            else:
+                path = root.joinpath(*path.parts)
+        try:
+            if path.is_file() and path.stat().st_size <= 200_000:
+                return path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            pass
+        return None
+
     class Meta:
         model = artifacts
-        fields = ["id", "task", "name", "path", "artifact_type", "verification_status", "sha256", "metadata", "download_url", "created_at"]
+        fields = ["id", "task", "name", "path", "artifact_type", "verification_status", "sha256", "metadata", "download_url", "preview", "created_at"]
 
 
 class PermissionRequestSerializer(serializers.ModelSerializer):

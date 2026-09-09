@@ -28,6 +28,16 @@ export const auditService = {
       return mockVerificationFailure;
     }
     const { apiClient } = await import('./api');
-    return apiClient.post('/audit/verify', { artifactId });
+    const result = await apiClient.get<any>('/chats/audit/verify/');
+    return {
+      artifactId,
+      artifactName: artifactId,
+      localHash: '',
+      recordedHash: '',
+      match: Boolean(result.valid),
+      blockchainNetwork: result.chain || 'AEGIS runtime audit chain',
+      timestamp: new Date().toISOString(),
+      action: result.recorded ? 'RUNTIME_CHAIN_VERIFIED' : 'RUNTIME_CHAIN_UNRECORDED',
+    };
   },
 };

@@ -1,0 +1,1 @@
+{"timestamp": "2026-09-09T01:15:41.665413+00:00", "event": "ai_task_cancelled", "session_id": "33b8fa2f-95f3-4153-b6b2-38027a5c95fd", "user": "1", "task_id": "c10efc62-f1cd-4037-abae-89f25bf25b3f", "metadata": {"status": "cancelled"}, "error": null}

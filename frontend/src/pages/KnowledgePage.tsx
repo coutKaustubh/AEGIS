@@ -8,7 +8,7 @@ import {
   Loader2,
   ChevronRight,
 } from 'lucide-react';
-import { chatService } from '@/services/chats';
+import { knowledgeService } from '@/services/knowledge';
 import type { KnowledgeAnswer, KnowledgeSearchResult } from '@/types/knowledge';
 import { DEPARTMENTS } from '@/lib/constants';
 import { PageHeader } from '@/components/layout/PageHeader';
@@ -29,7 +29,8 @@ export default function KnowledgePage() {
   const [selectedDept, setSelectedDept] = useState('All');
   const [isAsking, setIsAsking] = useState(false);
   const [aiAnswer, setAiAnswer] = useState<KnowledgeAnswer | null>(null);
-  const filteredResults: KnowledgeSearchResult[] = [];
+  const [results, setResults] = useState<KnowledgeSearchResult[]>([]);
+  const filteredResults = results.filter((item) => selectedDept === 'All' || item.department === selectedDept);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -37,10 +38,12 @@ export default function KnowledgePage() {
 
     setIsAsking(true);
     try {
-      const created = await chatService.ask(query);
-      await chatService.streamEvents(created.task.id, () => undefined);
-      const task = await chatService.getTask(created.task.id);
-      setAiAnswer({ answer: task.response_text || task.error || 'No answer returned.', sources: [], model: task.model_used || 'Local model', processedLocally: true });
+      const [answer, retrieved] = await Promise.all([
+        knowledgeService.ask(query),
+        knowledgeService.search({ query }),
+      ]);
+      setAiAnswer(answer);
+      setResults(retrieved);
     } catch (cause) {
       setAiAnswer({ answer: cause instanceof Error ? cause.message : 'Knowledge query failed.', sources: [], model: 'AEGIS backend', processedLocally: true });
     } finally {

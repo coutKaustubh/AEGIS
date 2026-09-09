@@ -11,6 +11,7 @@ https://docs.djangoproject.com/en/6.1/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -19,8 +20,13 @@ from datetime import timedelta
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Load environment variables from .env file
-load_dotenv(BASE_DIR / '.env')
+# Load local configuration.  Earlier project setup instructions called this
+# file ``env`` while dotenv conventions use ``.env``.  Support both names so a
+# correct database configuration is never silently ignored.  ``.env`` wins
+# when both files exist and real process environment variables always win.
+for _env_file in (BASE_DIR / 'env', BASE_DIR / '.env'):
+    if _env_file.is_file():
+        load_dotenv(_env_file, override=False)
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.1/howto/deployment/checklist/
@@ -43,7 +49,7 @@ CORS_ALLOWED_ORIGINS = {
 # Ubuntu/GPU service used by the AI team.
 AI_SERVICE_URL = os.getenv('AI_SERVICE_URL', 'http://127.0.0.1:8001')
 AI_SERVICE_TIMEOUT = float(os.getenv('AI_SERVICE_TIMEOUT', '10'))
-AI_TASK_TIMEOUT = float(os.getenv('AI_TASK_TIMEOUT', '300'))
+AI_TASK_TIMEOUT = float(os.getenv('AI_TASK_TIMEOUT', '360'))
 AI_TASK_POLL_INTERVAL = float(os.getenv('AI_TASK_POLL_INTERVAL', '0.5'))
 MEDIA_ROOT = Path(os.getenv('MEDIA_ROOT', BASE_DIR / 'media'))
 MEDIA_URL = '/media/'
@@ -109,13 +115,23 @@ WSGI_APPLICATION = 'core.wsgi.application'
 DATABASES = {
     "default": {
         "ENGINE": os.getenv("DB_ENGINE", "django.db.backends.postgresql"),
-        "NAME": os.getenv("DB_NAME", "aegisAI"),
+        # PostgreSQL folds unquoted database names to lowercase.  Use the
+        # provisioned lowercase database as the safe default; deployments can
+        # still override it with DB_NAME.
+        "NAME": os.getenv("DB_NAME", "aegisai"),
         "USER": os.getenv("DB_USER", "postgres"),
         "PASSWORD": os.getenv("DB_PASSWORD", ""),
         "HOST": os.getenv("DB_HOST", "localhost"),
         "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
+
+if "test" in sys.argv:
+    DATABASES["default"] = {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": ":memory:",
+    }
+
 
 
 # FOR JWT AUTHENTICATION

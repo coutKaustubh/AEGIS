@@ -7,19 +7,28 @@ from pathlib import Path
 from typing import Any
 
 
+DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent.parent / "skills"
+
+
 class SkillCatalog:
     def __init__(self, roots: list[str | Path] | None = None, *, max_bytes: int = 32 * 1024) -> None:
-        self.roots = [Path(root).resolve() for root in (roots or [Path.cwd() / "skills"])]
+        candidate_roots = list(roots) if roots else [Path.cwd() / "skills", Path.cwd() / ".aegis" / "skills"]
+        resolved_candidates = [Path(r).resolve() for r in candidate_roots]
+        if DEFAULT_SKILLS_DIR.resolve() not in resolved_candidates:
+            resolved_candidates.append(DEFAULT_SKILLS_DIR.resolve())
+        self.roots = resolved_candidates
         self.max_bytes = max_bytes
 
     def list(self) -> list[dict[str, Any]]:
         skills = []
+        seen = set()
         for root in self.roots:
             if not root.is_dir():
                 continue
             for path in sorted(root.glob("*/SKILL.md")):
                 meta = self._metadata(path)
-                if meta:
+                if meta and meta["name"] not in seen:
+                    seen.add(meta["name"])
                     skills.append(meta)
         return skills
 

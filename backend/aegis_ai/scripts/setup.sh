@@ -14,6 +14,18 @@ INSTALL_EXTRAS="${AEGIS_INSTALL_EXTRAS:-dev}"
 "$VENV_DIR/bin/python" -m pip install -e ".[${INSTALL_EXTRAS}]"
 
 if command -v cmake >/dev/null 2>&1; then
+  # CMake caches absolute source paths. AEGIS is often copied or cloned into
+  # another directory, so discard only the stale native build tree when its
+  # cached source no longer matches this checkout.
+  NATIVE_SOURCE_DIR="$(cd native && pwd -P)"
+  CACHED_SOURCE_DIR=""
+  if [ -f native/build/CMakeCache.txt ]; then
+    CACHED_SOURCE_DIR="$(sed -n 's#^CMAKE_HOME_DIRECTORY:INTERNAL=##p' native/build/CMakeCache.txt | head -n 1)"
+  fi
+  if [ -n "$CACHED_SOURCE_DIR" ] && [ "$CACHED_SOURCE_DIR" != "$NATIVE_SOURCE_DIR" ]; then
+    echo "Stale CMake cache detected; rebuilding native helper for $NATIVE_SOURCE_DIR"
+    rm -rf native/build
+  fi
   cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
   cmake --build native/build --config Release
   mkdir -p native/bin
