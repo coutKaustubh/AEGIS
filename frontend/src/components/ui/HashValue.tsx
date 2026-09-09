@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface ArtifactHashProps {
+interface HashValueProps {
   hash: string;
   truncate?: boolean;
   length?: number;
   className?: string;
 }
 
-export function ArtifactHash({ hash, truncate = true, length = 8, className }: ArtifactHashProps) {
+export function HashValue({ hash, truncate = true, length = 8, className }: HashValueProps) {
   const [copied, setCopied] = useState(false);
 
   const displayHash = truncate && hash.length > length * 2 + 3

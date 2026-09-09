@@ -20,7 +20,6 @@ import {
   Eye,
   UserCheck,
   Cpu,
-  Shield,
   Network,
   ListOrdered,
 } from 'lucide-react';
@@ -42,7 +41,6 @@ function FlowAgentNode({ data }: { data: AgentNode & { isSelected?: boolean } })
       case 'vision': return <Eye className="h-3.5 w-3.5" />;
       case 'rag': return <Search className="h-3.5 w-3.5" />;
       case 'reasoning': return <Cpu className="h-3.5 w-3.5 text-status-warning" />;
-      case 'blockchain': return <Shield className="h-3.5 w-3.5 text-status-success" />;
       default: return <Bot className="h-3.5 w-3.5" />;
     }
   };
@@ -114,7 +112,6 @@ export default function AgentExecutionDetailPage() {
       case 'vision': return <Eye className="h-3.5 w-3.5 text-text-muted" />;
       case 'rag': return <Search className="h-3.5 w-3.5 text-text-muted" />;
       case 'reasoning': return <Cpu className="h-3.5 w-3.5 text-status-warning" />;
-      case 'blockchain': return <Shield className="h-3.5 w-3.5 text-status-success" />;
       default: return <Layers className="h-3.5 w-3.5 text-text-muted" />;
     }
   };

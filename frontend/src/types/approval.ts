@@ -17,10 +17,6 @@ export interface Approval {
   keyFindings?: string[];
   sources?: ApprovalSource[];
   artifactHash?: string;
-  blockchainTxHash?: string;
-  blockchainBlockNumber?: number;
-  blockchainTimestamp?: string;
-  blockchainNetwork?: string;
 }
 
 export interface ApprovalSource {

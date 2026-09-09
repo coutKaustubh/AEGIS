@@ -20,9 +20,6 @@ export default function SettingsPage() {
   const [contextWindow, setContextWindow] = useState('32768');
   const [embeddingModel, setEmbeddingModel] = useState('bge-large-en-v1.5 (Local)');
   const [chunkSize, setChunkSize] = useState('512');
-  const [networkName, setNetworkName] = useState('AEGIS Sovereign Consortium (L2)');
-  const [chainId, setChainId] = useState('1337');
-  const [rpcUrl, setRpcUrl] = useState('http://127.0.0.1:8545');
 
   const handleSave = (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +31,7 @@ export default function SettingsPage() {
     <div className="max-w-4xl mx-auto space-y-6">
       <PageHeader
         title="Settings & Configuration"
-        description="Local runtime parameters, sovereign inference engines, and private blockchain ledger hooks"
+        description="Local runtime parameters and sovereign inference engines"
         actions={
           <Button
             type="button"
@@ -132,36 +129,6 @@ export default function SettingsPage() {
                     value={chunkSize}
                     onChange={(e) => setChunkSize(e.target.value)}
                   />
-                </div>
-              </Card>
-            ),
-          },
-          {
-            key: 'blockchain',
-            label: 'Ledger & Audit',
-            content: (
-              <Card padding="md" className="space-y-4 pt-4">
-                <div className="text-xs font-semibold uppercase tracking-wider text-text-muted font-mono">
-                  Proof-of-Authority Consortium Node
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <Input
-                    label="Ledger Network Name"
-                    value={networkName}
-                    onChange={(e) => setNetworkName(e.target.value)}
-                  />
-                  <Input
-                    label="Chain ID"
-                    value={chainId}
-                    onChange={(e) => setChainId(e.target.value)}
-                  />
-                  <div className="sm:col-span-2">
-                    <Input
-                      label="Local RPC Node Endpoint"
-                      value={rpcUrl}
-                      onChange={(e) => setRpcUrl(e.target.value)}
-                    />
-                  </div>
                 </div>
               </Card>
             ),

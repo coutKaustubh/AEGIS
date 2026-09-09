@@ -70,7 +70,7 @@ export default function DocumentsPage() {
     <div className="max-w-6xl mx-auto space-y-6">
       <PageHeader
         title="Classified Documents"
-        description="Encrypted on-premises document repository with cryptographic provenance tracking"
+        description="Encrypted on-premises document repository"
         badge={
           <Badge variant="outline" className="font-mono text-[10px] text-text-dim">
             {documents.length} Documents Secured
