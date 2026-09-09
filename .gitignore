@@ -25,3 +25,5 @@ db.sqlite3-journal
 .DS_Store
 Thumbs.db
 backend/logs/sessions/*.jsonl
+
+backend/shared/uploads

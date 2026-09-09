@@ -403,18 +403,29 @@ class OllamaSpecialistAgent(BaseAgent):
                     # Vision models can require several minutes on low-end
                     # GPUs. Keep this isolated/configurable so other agent
                     # deadlines remain unchanged while still bounding hangs.
-                    vision_timeout = max(30.0, float(os.getenv("VISION_TIMEOUT_SECONDS", "420")))
+                    vision_timeout = max(30.0, float(os.getenv("VISION_TIMEOUT_SECONDS", "300")))
                     self._observe_model_call()
                     response = await asyncio.wait_for(
                         self.provider.chat(
-                            [{"role": "user", "content": request.task}],
+                            [{"role": "user", "content": (
+                                f"{request.task}\n\n"
+                                "Return only the final visual answer; do not spend the output budget on reasoning."
+                            )}],
                             encoded_images=encoded,
                             # Image understanding only needs a concise caption;
                             # keeping the context/output bounded prevents a
                             # local CPU/Vulkan runner from spending minutes in
                             # unconstrained reasoning.
-                            options={"num_ctx": 4096, "num_predict": 128, "temperature": 0.1},
+                            # qwen3-vl can emit a long hidden reasoning trace
+                            # even when think=False. 128 tokens was therefore
+                            # exhausted before any visible answer arrived.
+                            options={
+                                "num_ctx": 4096,
+                                "num_predict": max(256, int(os.getenv("VISION_NUM_PREDICT", "1024"))),
+                                "temperature": 0.1,
+                            },
                             think=False,
+                            timeout=vision_timeout,
                         ),
                         vision_timeout,
                     )
@@ -1846,7 +1857,7 @@ class MasterAgent:
                  planner: Callable[..., Awaitable[list[dict[str, Any]]]] | None = None,
                  verifier: Callable[[AgentResult], Awaitable[dict[str, Any]]] | None = None,
                  policy: AgentCapabilityPolicy | None = None, max_master_steps: int = 10,
-                 max_subagent_calls: int = 8, max_depth: int = 2, total_timeout_seconds: float = 360.0,
+                 max_subagent_calls: int = 8, max_depth: int = 2, total_timeout_seconds: float | None = None,
                  trace: list[dict[str, Any]] | None = None,
                  progress_callback: Callable[[dict[str, Any]], None] | None = None,
                  capability_matcher: CapabilityMatcher | None = None,
@@ -1863,7 +1874,8 @@ class MasterAgent:
         self.max_master_steps = min(10, max(1, max_master_steps))
         self.max_subagent_calls = min(8, max(1, max_subagent_calls))
         self.max_depth = max(0, max_depth)
-        self.total_timeout_seconds = max(1.0, total_timeout_seconds)
+        configured_total_timeout = float(os.getenv("AEGIS_MASTER_TIMEOUT_SECONDS", "300")) if total_timeout_seconds is None else total_timeout_seconds
+        self.total_timeout_seconds = max(1.0, configured_total_timeout)
         self.trace = trace if trace is not None else []
         self.progress_callback = progress_callback
         self.adaptive_router = adaptive_router
@@ -1890,7 +1902,7 @@ class MasterAgent:
         the master and then enters the normal plan, delegation, and verification
         loop.
         """
-        plan = self._capability_plan(request)
+        plan = self._capability_plan(request, context=context)
         if self.adaptive_router and plan and plan[0].get("agent") != "lightweight_agent":
             baseline_item = plan[0]
             candidates = self._routing_candidates(request, baseline_item)
@@ -1960,9 +1972,37 @@ class MasterAgent:
             # raw prompts are intentionally never exposed to the terminal.
             self.progress_callback({"event": event, "trace_id": state.trace_id, **meta})
 
-    def _capability_plan(self, request: str) -> list[dict[str, Any]]:
+    def _capability_plan(self, request: str, *, context: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """Master-owned capability selection used when model planning is unavailable."""
         text = request.lower()
+        request_context = context or {}
+        input_path = str(request_context.get("input_path") or request_context.get("path") or "")
+        image_paths = request_context.get("image_paths") or request_context.get("images") or []
+        attached_files = request_context.get("attached_files") or []
+        attached_suffixes = {
+            Path(str(path)).suffix.lower()
+            for path in [*attached_files, input_path, *image_paths]
+            if str(path).strip()
+        }
+        has_document_input = bool(
+            input_path.lower().endswith((".pdf", ".doc", ".docx"))
+            or attached_suffixes.intersection({".pdf", ".doc", ".docx"})
+        )
+        has_image_input = bool(
+            image_paths
+            or attached_suffixes.intersection({".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".pgm", ".ppm"})
+        )
+        # Attachments are authoritative routing signals. Previously a short
+        # request such as "explain" won the lightweight branch and the
+        # attached file was never sent to the document/vision specialist.
+        if has_document_input:
+            return [{"agent": "document_agent", "task": request,
+                     "capability": "document_analysis",
+                     "success_criteria": ["grounded document evidence from the attached file"]}]
+        if has_image_input:
+            return [{"agent": "vision_agent", "task": request,
+                     "capability": "p_and_id_analysis",
+                     "success_criteria": ["grounded visual evidence from the attached image"]}]
         if re.search(r"\b(?:what(?:'s|s| is)\s+)?(?:the\s+)?sum\s+of\s+(?:the\s+)?first\s+n\s+(?:positive\s+)?numbers?\b|\bsum\s+from\s+1\s+to\s+n\b", text):
             return [{"agent": "general_agent", "task": request,
                      "capability": "calculation",
@@ -1985,7 +2025,8 @@ class MasterAgent:
                      "success_criteria": ["grounded administrative approval-note explanation"]}]
         output_match = re.search(r"\b(docx|word document|microsoft word|pdf|markdown|md|txt)\b", text)
         output = output_match.group(1) if output_match else None
-        modality = "image" if re.search(r"\b(image|p&id|diagram|visual)\b", text) else "document" if re.search(r"\b(pdf|document|report|ocr|markdown|md|txt)\b", text) else None
+        image_file_intent = bool(re.search(r"\.(?:png|jpe?g|webp|bmp|tiff?|pgm|ppm)(?:\b|$)", text))
+        modality = "image" if image_file_intent or re.search(r"\b(images?|p&id|diagram|visual)\b", text) else "document" if re.search(r"\b(pdf|document|report|ocr|markdown|md|txt)\b", text) else None
         code_intent = bool(re.search(
             r"\b(source\s+code|code|coding|python|py\s+file|test|tests|pytest|compile|compilation|debug|debugging|"
             r"fix|repair|implement|implementation|function|module|script|red[- ]?black|rb\s+trees?)\b|"
@@ -2045,7 +2086,7 @@ class MasterAgent:
         if re.search(r"\.(pdf|docx?)\b|\b(inspection|document|report|ocr)\b", text):
             return [{"agent": "document_agent", "task": request,
                      "success_criteria": ["structured document evidence"]}]
-        if re.search(r"\.(png|jpe?g|webp|bmp|tiff?)\b|\b(image|p&id|diagram|visual)\b", text):
+        if image_file_intent or re.search(r"\b(images?|p&id|diagram|visual)\b", text):
             return [{"agent": "vision_agent", "task": request,
                      "success_criteria": ["structured visual evidence"]}]
         if re.search(r"\.(py|js|ts|rs|go|java|c|cpp)\b|\b(code|coding|function|bug|pytest|test)\b", text):
@@ -2158,7 +2199,7 @@ class MasterAgent:
                     state.master_plan = [item for item in parsed if isinstance(item, dict)]
             except Exception as exc:
                 self._event("MASTER_PLAN_WARNING", state, reason=str(exc)[:300])
-        planned = self._capability_plan(planning_request)
+        planned = self._capability_plan(planning_request, context=request_context)
         expected = planned[0]["agent"]
         if planned and "selection_score" in planned[0]:
             self._event("CAPABILITY_MATCH", state, capability=planned[0].get("capability"),
@@ -2169,7 +2210,7 @@ class MasterAgent:
                 any(item.get("agent") not in registered for item in state.master_plan) or
                 (expected in registered and expected in {"document_agent", "vision_agent", "coding_agent"}
                  and state.master_plan[0].get("agent") != expected)):
-            state.master_plan = self._capability_plan(user_request)
+            state.master_plan = self._capability_plan(user_request, context=request_context)
         # Keep all planned retries within the capability required by the
         # original request. A document failure must never fall through to an
         # unrelated coding item supplied by a planner.
@@ -2180,7 +2221,7 @@ class MasterAgent:
             planning_request, re.I))
         if scoped_request and expected in {"document_agent", "vision_agent", "coding_agent"}:
             compatible = [item for item in state.master_plan if item.get("agent") == expected]
-            state.master_plan = compatible[: self.max_master_steps] or self._capability_plan(planning_request)
+            state.master_plan = compatible[: self.max_master_steps] or self._capability_plan(planning_request, context=request_context)
         self._event("CAPABILITY_DISCOVERY", state, capabilities=self.registry.capabilities())
         calls = 0
         for step, item in enumerate(state.master_plan[: self.max_master_steps]):

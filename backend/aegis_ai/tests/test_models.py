@@ -209,6 +209,15 @@ class TestOllamaProvider:
         )]
         assert events == [{"kind": "thinking", "token": "planning"}, {"kind": "content", "token": "answer"}]
 
+    def test_thinking_flag_is_explicit_for_thinking_models(self) -> None:
+        cfg = ModelConfig(
+            name="qwen-general", provider="ollama", model="qwen3.5:9b",
+            capabilities=[ModelCapability.GENERAL], supports_thinking=True,
+        )
+        provider = OllamaProvider(cfg)
+        assert provider._chat_payload([], stream=False, image_paths=None, think=False)["think"] is False
+        assert provider._chat_payload([], stream=False, image_paths=None, think=True)["think"] is True
+
     def test_creates_provider(self) -> None:
         cfg = ModelConfig(
             name="test-ollama",
