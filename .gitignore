@@ -26,3 +26,5 @@ db.sqlite3-journal
 
 logs/
 shared/
+Thumbs.db
+backend/logs/sessions/*.jsonl

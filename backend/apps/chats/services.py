@@ -18,6 +18,7 @@ from django.db import close_old_connections
 from apps.chats.ai_client import AIClient, AIServiceError
 from apps.chats.models import ai_tasks, artifacts, attachments, chat_sessions, chats, permission_requests
 from apps.chats.session_logs import SessionLog
+from apps.chats.response_contract import canonicalize
 
 
 class TaskConflictError(Exception):
@@ -242,11 +243,11 @@ def _execute_task(task_id: str) -> None:
             task.refresh_from_db(fields=["status"])
             if task.status != "cancelled":
                 task.status = str(final.get("status", "failed"))
-                task.result = final.get("result") or {}
+                task.result = canonicalize(final.get("result"), task.id)
                 task.network = final.get("network") or (task.result or {}).get("network_report") or {}
                 task.model_used = str((task.result or {}).get("model") or (task.result or {}).get("model_used") or "")
                 task.error = str(final.get("error") or "")
-                task.response_text = _extract_answer(final)
+                task.response_text = task.result["response"]["content"]
                 task.save(update_fields=["status", "result", "network", "model_used", "error", "response_text", "updated_at"])
             # The status endpoint omits its event list; fetch the completed
             # stream so session logs contain the full workflow.
@@ -426,11 +427,11 @@ def ask_ai(*, user, content: str, session_id=None, uploaded_files=None, metadata
         session_log.write("ai_task_submitted", task_id=task.id, execution_id=submitted.execution_id, status=submitted.status)
         final = client.wait_for_task(submitted.execution_id)
         task.status = str(final.get("status", "failed"))
-        task.result = final.get("result") or {}
+        task.result = canonicalize(final.get("result"), task.id)
         task.network = final.get("network") or (task.result or {}).get("network_report") or {}
         task.model_used = str((task.result or {}).get("model") or (task.result or {}).get("model_used") or "")
         task.error = str(final.get("error") or "")
-        task.response_text = _extract_answer(final)
+        task.response_text = task.result["response"]["content"]
         task.save(update_fields=["status", "result", "network", "model_used", "error", "response_text", "updated_at"])
         for event in client.get_events(submitted.execution_id):
             session_log.write(str(event.get("type") or event.get("event") or "ai_progress"), task_id=task.id, ai_event=event)
