@@ -194,7 +194,8 @@ async def main():
 
 asyncio.run(main())
 '''
-    env = {**os.environ, "PYTHONPATH": str(Path.cwd())}
+    existing_pp = os.environ.get("PYTHONPATH", "")
+    env = {**os.environ, "PYTHONPATH": f"{Path.cwd()}:{existing_pp}" if existing_pp else str(Path.cwd())}
     first_env = {**env, "AEGIS_CRASH_AFTER": "execute_step"}
     first = subprocess.run([sys.executable, "-c", worker, str(db), str(tmp_path)],
                            cwd=Path.cwd(), env=first_env, capture_output=True, text=True)

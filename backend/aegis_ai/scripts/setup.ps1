@@ -26,6 +26,19 @@ if ($LASTEXITCODE -ne 0) { throw "pip upgrade failed" }
 if ($LASTEXITCODE -ne 0) { throw "AEGIS installation failed" }
 
 if (Get-Command cmake -ErrorAction SilentlyContinue) {
+    $NativeSource = (Resolve-Path "native").Path
+    $CMakeCache = "native\build\CMakeCache.txt"
+    if (Test-Path $CMakeCache) {
+        $CachedSource = Select-String -Path $CMakeCache -Pattern '^CMAKE_HOME_DIRECTORY:INTERNAL=' |
+            Select-Object -First 1
+        if ($CachedSource) {
+            $CachedSourcePath = $CachedSource.Line -replace '^CMAKE_HOME_DIRECTORY:INTERNAL=', ''
+            if ($CachedSourcePath -ne $NativeSource) {
+                Write-Host "Stale CMake cache detected; rebuilding native helper for $NativeSource"
+                Remove-Item -Recurse -Force "native\build"
+            }
+        }
+    }
     & cmake -S native -B native/build -DCMAKE_BUILD_TYPE=Release
     if ($LASTEXITCODE -ne 0) { throw "Native helper configuration failed" }
     & cmake --build native/build --config Release

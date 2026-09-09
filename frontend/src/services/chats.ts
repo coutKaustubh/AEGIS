@@ -6,6 +6,8 @@ export interface ChatSessionRecord {
   created_at: string;
   updated_at: string;
   chats?: ChatMessageRecord[];
+  latest_task_id?: string | null;
+  latest_task?: AITaskRecord | null;
 }
 
 export interface ChatMessageRecord {
@@ -15,6 +17,7 @@ export interface ChatMessageRecord {
   content: string;
   message_type: string;
   metadata: Record<string, unknown>;
+  attachments?: Array<{ id: string; name: string; type: string; size: number; url?: string | null }>;
   created_at: string;
 }
 
@@ -43,6 +46,7 @@ export interface ArtifactRecord {
   sha256: string;
   metadata: Record<string, unknown>;
   download_url: string;
+  preview?: string | null;
   created_at: string;
 }
 
@@ -82,7 +86,7 @@ export const chatService = {
   getPermissions: (id: string) => apiClient.get<PermissionRecord[]>(`/chats/tasks/${id}/permissions/`),
   decidePermission: (taskId: string, requestId: string, decision: 'approve' | 'deny', reason = '') =>
     apiClient.post<PermissionRecord>(`/chats/tasks/${taskId}/permissions/${requestId}/${decision}/`, { reason }),
+  cancelTask: (id: string) => apiClient.post<AITaskRecord>(`/chats/tasks/${id}/cancel/`, {}),
   streamEvents: (id: string, onEvent: (event: Record<string, unknown>) => void, signal?: AbortSignal) =>
     streamSSE(`/chats/tasks/${id}/events/`, onEvent, signal),
 };
-

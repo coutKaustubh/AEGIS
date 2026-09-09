@@ -45,16 +45,18 @@ from tools.ocr import extract_ocr
 from tools.filesystem import FilesystemTools
 from tools.workspace import WorkspaceReadTools
 from tools.documents import DocumentTools
+from tools.artifacts import ArtifactService
 from tools.vision import VisionRuntime
 from tools.permissions import AccessMode, SessionPermissions
 from tools.registry import ToolRegistry
-from tools.mcp_adapter import AegisMCPAdapter
-from runtime.prompts import SYSTEM_PROMPT, TOOL_LOOP_PROMPT
+from runtime.prompts import SYSTEM_PROMPT, TOOL_LOOP_PROMPT, format_tool_definitions
 from runtime.tool_policy import PolicyDenied, build_policy_engine
 from runtime.official_documents import OfficialDocumentWorkflow
 from routing.approval_note import ApprovalNote
 from routing.adaptive_router import ContextualBanditRouter, SQLiteBanditStore
 from evaluation.routing import reward_for_outcome
+from aegis.memory import MemoryStore
+from aegis.evaluation import EvaluationRecord, EvaluationSuite, TrajectoryRecord
 
 _SYSTEM_PROMPT = SYSTEM_PROMPT
 _TOOL_LOOP_PROMPT = TOOL_LOOP_PROMPT
@@ -90,6 +92,8 @@ class Orchestrator:
         self.workspace_root = Path(workspace_root or self.output_store.workspace_dir).resolve()
         self.graph_state_store = SQLiteGraphStateStore(self.workspace_root / ".aegis" / "runs.db")
         self.telemetry_store = SQLiteTelemetryStore(self.workspace_root / ".aegis" / "runs.db")
+        self.memory = MemoryStore(self.workspace_root / ".aegis" / "memory.sqlite3")
+        self.evaluations = EvaluationSuite(self.workspace_root / ".aegis" / "evaluations.jsonl")
         self.adaptive_router = ContextualBanditRouter(
             store=SQLiteBanditStore(self.workspace_root / ".aegis" / "runs.db")
         )
@@ -113,6 +117,7 @@ class Orchestrator:
             command_approver=self._command_approver,
         )
         self.document_tools = DocumentTools(self.output_store.workspace_dir)
+        self.artifacts = ArtifactService(self.workspace_root, audit=self.audit)
         try:
             vision_provider = registry.get_provider("qwen-vision")
         except KeyError:
@@ -140,9 +145,18 @@ class Orchestrator:
             name="write_official_document", filesystem="deliverables_only",
             requires_approval=True, max_output=20_000,
         ))
-        self.mcp_adapter = AegisMCPAdapter(self.tool_registry)
-        # Additive capability-driven workflow seam; existing graph remains the
-        # backwards-compatible default during migration.
+        for artifact_tool in ("create_presentation", "create_workbook", "edit_artifact"):
+            self.policy_engine.register(ToolPolicy(
+                name=artifact_tool, filesystem="workspace_only", requires_approval=True,
+                timeout=90.0, max_output=20_000,
+            ))
+        self.policy_engine.register(ToolPolicy(
+            name="validate_artifact", filesystem="workspace_only", requires_approval=False,
+            timeout=30.0, max_output=20_000,
+        ))
+        # Capability-driven specialist tools are wrapped by the canonical
+        # policy gateway. MCP remains an optional transport adapter and is not
+        # constructed here because normal execution does not require it.
         specialist_tools = {
                 "read_file": self.workspace_tools.read_file,
                 "list_directory": self.workspace_tools.list_directory,
@@ -165,6 +179,10 @@ class Orchestrator:
                 "read_document_section": self.document_tools.read_document_section,
                 "analyze_image": self.vision_runtime.analyze_image,
                 "compare_images": self.vision_runtime.compare_images,
+                "create_presentation": self.artifacts.create_presentation,
+                "create_workbook": self.artifacts.create_workbook,
+                "edit_artifact": self.artifacts.edit,
+                "validate_artifact": self.artifacts.validate,
             }
         self.agent_registry = build_default_agent_registry(
             registry,
@@ -195,40 +213,25 @@ class Orchestrator:
         self.master_agent.routing_mode = "adaptive"
         return {"enabled": True, "mode": "adaptive"}
 
-    @staticmethod
-    def _run_document_pipeline(input_path: str) -> dict[str, Any]:
+    def _run_document_pipeline(self, input_path: str) -> dict[str, Any]:
         from pipeline.inspect_report import run_inspect_report
-        return run_inspect_report(input_path=input_path)
+        return run_inspect_report(input_path=input_path, workspace_root=self.workspace_root)
 
     async def run_master(self, user_request: str, *, context: dict[str, Any] | None = None,
                          progress_callback: Any | None = None) -> dict[str, Any]:
         """Run every Master-first request through the universal task graph."""
         request_context = dict(context or {})
         request_context.setdefault("workspace_root", str(self.workspace_tools.root))
-        # API uploads are already copied into the AI workspace before this
-        # method runs.  Prefer those trusted staged paths over a filename
-        # mentioned in natural language (which is not a filesystem path).
-        attached = request_context.get("files") or []
-        if attached:
-            candidates = [item for item in attached if isinstance(item, dict) and item.get("path")]
-            requested_name = re.search(
-                r"(?:^|\s)([^\s]+\.(?:pdf|docx?|png|jpe?g|webp|bmp|tiff?|pgm|ppm))\b",
-                user_request,
-                re.I,
-            )
-            selected = None
-            if requested_name:
-                wanted = Path(requested_name.group(1).strip('`\"\'.,')).name.lower()
-                selected = next((item for item in candidates
-                                 if Path(str(item.get("name") or item.get("path"))).name.lower() == wanted), None)
-            selected = selected or (candidates[0] if len(candidates) == 1 else None)
-            if selected:
-                staged_path = str(selected["path"])
-                suffix = Path(staged_path).suffix.lower()
-                if suffix in {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff", ".pgm", ".ppm"}:
-                    request_context["image_paths"] = [staged_path]
-                elif suffix in {".pdf", ".doc", ".docx"}:
-                    request_context["input_path"] = staged_path
+        # Do not let a bare summarization request silently summarize stale
+        # session state or invent a source document.
+        if (re.fullmatch(r"\s*summar(?:ize|ise)\s*(?:this|the document|the file)?\s*[.!?]*\s*", user_request, re.I)
+                and not request_context.get("attached_files") and not request_context.get("input_path")):
+            return {
+                "final_answer": "Please attach a document or provide text to summarize.",
+                "status": "completed", "verification": {"passed": True, "status": "verified", "summary": "input requirement checked"},
+                "trace": [{"step": "input_validation", "message": "summarization input required"}],
+                "selected_agent": "document_agent", "selected_model": "qwen-general",
+            }
         # Preserve explicit local media/file references for the universal graph
         # instead of letting specialist selection discard them.
         path_match = re.search(r"(?:^|\s)([^\s]+\.(?:pdf|docx?|png|jpe?g|webp|bmp|tiff?|pgm|ppm|py|js|ts|rs|go|java|c|cpp))\b", user_request, re.I)
@@ -242,10 +245,17 @@ class Orchestrator:
                 request_context.setdefault("path", candidate)
         previous_callback = self.master_agent.progress_callback
         self.master_agent.progress_callback = progress_callback
+        previous_artifact_callback = self.artifacts.progress_callback
         previous_command_callback = getattr(self.workspace_tools, "command_event_callback", None)
         run_id = self.output_store.new_run_id()
         started = time.perf_counter()
+        memory_hits = self.memory.search(user_request, scope="global", limit=4)
+        request_context.setdefault("memory_hits", memory_hits)
+        self.memory.record_event("task_started", scope=f"run:{run_id}", metadata={
+            "request": user_request[:500], "architecture_memory_hits": len(memory_hits),
+        })
         self.workspace_tools.command_event_callback = progress_callback
+        self.artifacts.progress_callback = progress_callback
         try:
             graph_state = await run_task_graph(
                 self.master_agent,
@@ -259,6 +269,7 @@ class Orchestrator:
             )
         finally:
             self.master_agent.progress_callback = previous_callback
+            self.artifacts.progress_callback = previous_artifact_callback
             self.workspace_tools.command_event_callback = previous_command_callback
         result_items = graph_state.get("step_results", [])
         status = "success" if graph_state.get("status") == "completed" else "failure"
@@ -275,6 +286,36 @@ class Orchestrator:
                               if isinstance(candidate, dict) and candidate.get("model")
                               and str(candidate.get("model")) != str(selected_model_role)]
         network_report = self.network.report()
+        actual_tools: list[str] = []
+        for event in graph_state.get("trace", []):
+            tool = event.get("tool") if isinstance(event, dict) else None
+            if tool and str(tool) not in actual_tools:
+                actual_tools.append(str(tool))
+        for item in result_items:
+            coding_state = item.get("metadata", {}).get("coding_state", {}) if isinstance(item, dict) else {}
+            for command in coding_state.get("commands", []) if isinstance(coding_state, dict) else []:
+                if isinstance(command, dict) and "execute_command" not in actual_tools:
+                    actual_tools.append("execute_command")
+        trajectory = TrajectoryRecord(
+            task_id=run_id, actual_tools=actual_tools,
+            latency_ms=(time.perf_counter() - started) * 1000,
+            tokens=int(graph_state.get("token_count", 0) or 0),
+            completed=graph_state.get("status") == "completed",
+            retries=len(graph_state.get("repair_history", []) or []),
+        )
+        trajectory_score = trajectory.score()
+        self.evaluations.record(EvaluationRecord(
+            task_id=run_id, expected=None, actual=graph_state.get("final_answer", ""),
+            correctness=1.0 if trajectory.completed else 0.0,
+            latency_ms=trajectory.latency_ms, token_usage=trajectory.tokens,
+            tool_errors=len(graph_state.get("errors", []) or []),
+            recovered=trajectory.retries > 0 and trajectory.completed,
+            metadata={"trajectory": trajectory_score, "tools": actual_tools},
+        ))
+        self.memory.record_event("task_finished", scope=f"run:{run_id}", metadata={
+            "status": graph_state.get("status"), "latency_ms": trajectory.latency_ms,
+            "tool_count": len(actual_tools), "retries": trajectory.retries,
+        })
         telemetry = self.telemetry_store.record(
             run_id=run_id, task_type=str(task_data.get("domain_intent") or task_data.get("operation") or "general"),
             required_capabilities=list(task_data.get("required_capabilities", []) or []),
@@ -323,6 +364,7 @@ class Orchestrator:
             "started_at": datetime.now(timezone.utc).isoformat(),
             "completed_at": datetime.now(timezone.utc).isoformat(),
             "telemetry": telemetry,
+            "trajectory": trajectory_score,
         }
         trace = [{"timestamp": datetime.now(timezone.utc).isoformat(), "step": e.get("event", "master"),
                   "message": e.get("event", "master"), "metadata": e} for e in graph_state.get("trace", [])]
@@ -341,9 +383,13 @@ class Orchestrator:
             "final_answer": final_answer,
             "preprocessing": graph_state.get("preprocessing", {}),
             "agent_results": result_items,
+            "artifacts": graph_state.get("artifacts", []),
             "master_plan": graph_state.get("plan", []),
             "verification": graph_state.get("verification", {}),
-            "errors": graph_state.get("errors", []),
+            # Internal retry history remains in telemetry/trace, but a
+            # recovered completed run must not present its stale timeout as a
+            # final user-facing error.
+            "errors": [] if status == "success" else graph_state.get("errors", []),
             "repair_history": graph_state.get("repair_history", []),
             "selected_agent": graph_state.get("selected_agent", ""),
             "selected_model": graph_state.get("selected_model", ""),
@@ -386,6 +432,12 @@ class Orchestrator:
             reg.register(document_tool, tags=["document", "local", "read_only"])
         for vision_tool in self.vision_runtime.as_langchain_tools():
             reg.register(vision_tool, tags=["vision", "local", "read_only"])
+        for artifact_tool in self._artifact_langchain_tools():
+            reg.register(artifact_tool, requires_approval=artifact_tool.name in {"create_presentation", "create_workbook", "edit_artifact"},
+                        tags=["artifact", "office", "local"],
+                        permissions={"read": True, "write": artifact_tool.name != "validate_artifact", "delete": False,
+                                     "network": False, "external_side_effect": False,
+                                     "credential_access": False, "system_access": False})
         reg.register(self._official_document_tool(), requires_approval=True,
                      tags=["document", "official", "approval"],
                      permissions={"read": False, "write": True, "delete": False,
@@ -393,6 +445,30 @@ class Orchestrator:
                                   "credential_access": False, "system_access": False},
                      reversible=False)
         return reg
+
+    def _artifact_langchain_tools(self):
+        """Expose the deterministic artifact service in the canonical registry."""
+        @tool("create_presentation")
+        def create_presentation(spec: dict[str, Any], output_path: str = "") -> dict[str, Any]:
+            """Create and validate a local PowerPoint from a structured specification."""
+            return self.artifacts.create_presentation(spec, output_path or None)
+
+        @tool("create_workbook")
+        def create_workbook(spec: dict[str, Any], output_path: str = "") -> dict[str, Any]:
+            """Create and validate a local Excel workbook from a structured specification."""
+            return self.artifacts.create_workbook(spec, output_path or None)
+
+        @tool("edit_artifact")
+        def edit_artifact(source_path: str, operations: list[dict[str, Any]], output_path: str = "") -> dict[str, Any]:
+            """Edit a local PPTX or XLSX using supported deterministic operations."""
+            return self.artifacts.edit(source_path, operations, output_path or None)
+
+        @tool("validate_artifact")
+        def validate_artifact(path: str, expected: dict[str, Any] | None = None) -> dict[str, Any]:
+            """Validate a local PPTX or XLSX and return structured evidence."""
+            return self.artifacts.validate(path, expected)
+
+        return [create_presentation, create_workbook, edit_artifact, validate_artifact]
 
     def _official_document_tool(self):
         workflow = self.official_documents
@@ -712,8 +788,15 @@ class Orchestrator:
              if isinstance(message, HumanMessage)),
             "",
         )
+        target_names = sorted(allowed_tools or self.tool_registry.list_names())
+        tool_objs = []
+        for n in target_names:
+            try:
+                tool_objs.append(self.tool_registry.get(n))
+            except Exception:
+                tool_objs.append(n)
         graph_messages = [SystemMessage(content=_TOOL_LOOP_PROMPT.format(
-            tools=", ".join(sorted(allowed_tools or self.tool_registry.list_names())),
+            tools=format_tool_definitions(tool_objs),
             task=user_task[:4000]
         )), *messages]
         try:
@@ -986,7 +1069,7 @@ class Orchestrator:
                     elif kind == "result":
                         meta = {
                             "step": loop_event.get("iteration"),
-                            "model": state.get("selected_model_id") or getattr(provider, "model_id", "qwen2.5-coder:7b"),
+                            "model": state.get("selected_model_id") or getattr(provider, "model_id", "configured"),
                             "tool": loop_event["tool"],
                             "arguments": loop_event.get("arguments", {}),
                             "status": loop_event["status"],

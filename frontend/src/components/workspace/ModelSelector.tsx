@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { ChevronDown, Check, Zap, Brain, Eye, Code2, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { type AegisModel, getModels } from '@/services/models';
+import { type AegisModel, getModels, loadModels } from '@/services/models';
 
 const capabilityConfig: Record<
   AegisModel['capability'],
@@ -21,8 +21,13 @@ interface ModelSelectorProps {
 
 export function ModelSelector({ selectedModel, onSelectModel }: ModelSelectorProps) {
   const [open, setOpen] = useState(false);
+  const [models, setModels] = useState<AegisModel[]>(getModels());
   const containerRef = useRef<HTMLDivElement>(null);
-  const models = getModels();
+  useEffect(() => {
+    let mounted = true;
+    void loadModels().then((live) => { if (mounted && live.length) setModels(live); });
+    return () => { mounted = false; };
+  }, []);
 
   // Close on click outside
   useEffect(() => {

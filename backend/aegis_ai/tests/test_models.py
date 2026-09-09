@@ -95,6 +95,29 @@ models:
         configs = reg.list_models()
         assert len(configs) == 3
 
+    def test_environment_overrides_yaml_model_and_base_url(self, yaml_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("AEGIS_MODEL_ALPHA", "local-general:latest")
+        monkeypatch.setenv("AEGIS_OLLAMA_BASE_URL", "http://127.0.0.1:11435")
+        reg = ModelRegistry.from_yaml(yaml_path)
+        assert reg.get_provider("alpha").model_id == "local-general:latest"
+        assert reg.get_provider("alpha").base_url == "http://127.0.0.1:11435"
+
+    def test_repository_env_is_loaded_relative_to_model_yaml(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        config_dir = tmp_path / "config"
+        config_dir.mkdir()
+        (tmp_path / ".env").write_text("AEGIS_MODEL_GENERAL=from-file:latest\n", encoding="utf-8")
+        model_file = config_dir / "models.yaml"
+        model_file.write_text("""
+models:
+  qwen-general:
+    provider: ollama
+    model: yaml-default:latest
+    capabilities: [general]
+""", encoding="utf-8")
+        monkeypatch.delenv("AEGIS_MODEL_GENERAL", raising=False)
+        reg = ModelRegistry.from_yaml(model_file)
+        assert reg.get_provider("qwen-general").model_id == "from-file:latest"
+
     def test_missing_yaml_raises(self, tmp_path: Path) -> None:
         with pytest.raises(FileNotFoundError):
             ModelRegistry.from_yaml(tmp_path / "nonexistent.yaml")
@@ -249,7 +272,9 @@ class TestOllamaProvider:
         assert payload["messages"][0]["images"] == encoded
         assert str(image) not in str(payload)
         assert encoded[0].startswith("/9j/")
-        assert payload["think"] is False
+        # Unsupported models must receive no `think` field at all; Ollama
+        # rejects the presence of that option for those model families.
+        assert "think" not in payload
 
     def test_invalid_image_is_rejected_before_request(self, tmp_path: Path) -> None:
         image = tmp_path / "not-an-image.jpg"

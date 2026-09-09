@@ -495,12 +495,12 @@ class WorkspaceReadTools:
         }
 
     def create_file(self, path: str, content: str, approver: Any = None,
-                    dry_run: bool = False) -> dict[str, Any]:
+                    dry_run: bool = False, overwrite: bool = True) -> dict[str, Any]:
         """Create a new text file inside the workspace (requires approval)."""
         target = self._path(path)
         if isinstance(target, dict):
             return target
-        if target.exists():
+        if target.exists() and not overwrite:
             return {"ok": False, "status": "failure", "tool": "create_file", "error": "file_exists"}
         if not isinstance(content, str) or len(content.encode("utf-8")) > _MAX_FILE_BYTES:
             return {"ok": False, "status": "failure", "tool": "create_file", "error": "content_too_large"}
@@ -529,7 +529,7 @@ class WorkspaceReadTools:
         except OSError as exc:
             return {"ok": False, "status": "failure", "tool": "create_file", "error": str(exc)[:200]}
 
-    def create_python_script(self, path: str, content: str, approver: Any = None) -> dict[str, Any]:
+    def create_python_script(self, path: str, content: str, approver: Any = None, overwrite: bool = True) -> dict[str, Any]:
         """Create one approved Python source file inside the workspace.
 
         This is intentionally a narrow convenience tool for coding tasks; it
@@ -543,7 +543,7 @@ class WorkspaceReadTools:
         except SyntaxError as exc:
             return {"ok": False, "status": "failure", "tool": "create_python_script",
                     "error": "syntax_error", "message": f"Python syntax error: {exc.msg} (line {exc.lineno})"}
-        result = self.create_file(path, content, approver=approver)
+        result = self.create_file(path, content, approver=approver, overwrite=overwrite)
         result["tool"] = "create_python_script"
         return result
 

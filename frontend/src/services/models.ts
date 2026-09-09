@@ -1,5 +1,5 @@
 // ─── AEGIS Model Configuration ─────────────────────────────────────────────────
-// Mock model registry. Replace with API calls when Django backend is integrated.
+// Local fallback used only while the runtime health endpoint is unavailable.
 
 export interface AegisModel {
   id: string;
@@ -12,49 +12,62 @@ export interface AegisModel {
 
 export const AEGIS_MODELS: AegisModel[] = [
   {
-    id: 'aegis-reasoner',
-    name: 'AEGIS Reasoner',
+    id: 'qwen-general',
+    name: 'qwen3.5:9b',
     description: 'Deep analysis & multi-step reasoning for complex industrial queries',
     capability: 'Reasoning',
-    contextWindow: '128K',
+    contextWindow: '32K',
     isDefault: true,
   },
   {
-    id: 'aegis-fast',
-    name: 'AEGIS Fast',
+    id: 'llama-small',
+    name: 'Qwen2.5:1.5b',
     description: 'Low-latency responses for quick lookups and simple tasks',
     capability: 'Speed',
+    contextWindow: '8K',
+    isDefault: false,
+  },
+  {
+    id: 'qwen-vision',
+    name: 'qwen3-vl:8b',
+    description: 'P&ID drawings, engineering diagrams, and image analysis',
+    capability: 'Vision',
     contextWindow: '32K',
     isDefault: false,
   },
   {
-    id: 'aegis-vision',
-    name: 'AEGIS Vision',
-    description: 'P&ID drawings, engineering diagrams, and image analysis',
-    capability: 'Vision',
-    contextWindow: '64K',
-    isDefault: false,
-  },
-  {
-    id: 'aegis-code',
-    name: 'AEGIS Code',
+    id: 'qwen-coder',
+    name: 'qwen2.5-coder:7b',
     description: 'Code generation, calculations, and sandbox execution',
     capability: 'Code',
-    contextWindow: '64K',
-    isDefault: false,
-  },
-  {
-    id: 'aegis-general',
-    name: 'AEGIS General',
-    description: 'Balanced model for everyday operational queries',
-    capability: 'General',
-    contextWindow: '64K',
+    contextWindow: '32K',
     isDefault: false,
   },
 ];
 
 export function getModels(): AegisModel[] {
   return AEGIS_MODELS;
+}
+
+export async function loadModels(): Promise<AegisModel[]> {
+  try {
+    const { apiClient } = await import('./api');
+    const response = await apiClient.get<{ models: Array<Record<string, any>> }>('/chats/models/');
+    const live = (response.models || []).map((model) => ({
+      id: String(model.id),
+      name: String(model.name || model.id),
+      description: `${model.provider || 'local'} · ${model.available ? 'available' : 'unavailable'}`,
+      capability: (model.capabilities || []).some((value: string) => value.toLowerCase().includes('vision')) ? 'Vision'
+        : (model.capabilities || []).some((value: string) => value.toLowerCase().includes('coding')) ? 'Code'
+        : (model.capabilities || []).some((value: string) => value.toLowerCase().includes('reasoning')) ? 'Reasoning'
+        : (model.capabilities || []).some((value: string) => value.toLowerCase().includes('lightweight')) ? 'Speed' : 'General',
+      contextWindow: `${Math.round(Number(model.context_length || 8192) / 1024)}K`,
+      isDefault: String(model.id).includes('general'),
+    } as AegisModel));
+    return live.length ? live : AEGIS_MODELS;
+  } catch {
+    return AEGIS_MODELS;
+  }
 }
 
 export function getDefaultModel(): AegisModel {
