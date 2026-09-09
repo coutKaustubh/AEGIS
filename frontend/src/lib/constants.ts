@@ -5,6 +5,7 @@ export const APP_TAGLINE = 'Secure intelligence for sensitive operations.';
 export const NAV_ITEMS = [
   { label: 'Dashboard', path: '/', icon: 'LayoutDashboard' },
   { label: 'Workspace', path: '/workspace', icon: 'MessageSquare' },
+  { label: 'Engineering', path: '/engineering', icon: 'Wrench' },
   { type: 'divider' as const },
   { label: 'Documents', path: '/documents', icon: 'FileText' },
   { label: 'Knowledge', path: '/knowledge', icon: 'BookOpen' },
