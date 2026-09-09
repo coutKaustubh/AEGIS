@@ -25,7 +25,7 @@ function toApproval(item: PermissionRecord): Approval {
     requestDetail: JSON.stringify(item.details || {}),
     generatedBy: 'AEGIS AI',
     model: 'Local specialist',
-    status: item.status === 'denied' ? 'rejected' : item.status === 'expired' ? 'rejected' : item.status === 'approved' ? 'approved' : 'pending',
+    status: item.status === 'expired' ? 'expired' : item.status === 'denied' ? 'rejected' : item.status === 'approved' ? 'approved' : 'pending',
     createdAt: item.created_at,
     reviewedAt: item.status === 'pending' ? undefined : item.updated_at,
     reviewerComment: item.decision_reason || undefined,

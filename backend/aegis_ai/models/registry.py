@@ -9,9 +9,13 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import TYPE_CHECKING
+import os
+import asyncio
+import re
 
 import yaml
 
+from config.env import load_env
 from .base import ModelCapability, ModelConfig, ModelProvider
 from .ollama import OllamaProvider
 
@@ -59,10 +63,24 @@ class ModelRegistry:
     def from_yaml(
         cls,
         path: str | Path,
-        base_url: str = "http://localhost:11434",
+        base_url: str | None = None,
     ) -> ModelRegistry:
         """Load the registry from a YAML file."""
-        path = Path(path)
+        path = Path(path).resolve()
+        if not path.exists():
+            # Support callers launched from the Django repository root while
+            # keeping the canonical registry inside the AI runtime package.
+            candidates = [
+                Path(__file__).resolve().parents[1] / "config" / path.name,
+                Path.cwd() / "backend" / "aegis_ai" / "config" / path.name,
+            ]
+            path = next((candidate.resolve() for candidate in candidates if candidate.exists()), path)
+        # Load the repository-local .env even when AEGIS is launched from a
+        # different working directory. Existing shell variables still win
+        # because load_env never overwrites os.environ.
+        project_env = (path.parent.parent / ".env") if path.parent.name == "config" else (path.parent / ".env")
+        load_env(project_env)
+        load_env(Path.cwd() / ".env")
         if not path.exists():
             raise FileNotFoundError(f"Model config not found: {path}")
 
@@ -70,18 +88,27 @@ class ModelRegistry:
             raw = yaml.safe_load(fh)
 
         configs: dict[str, ModelConfig] = {}
+        model_env = {
+            "qwen-general": "AEGIS_MODEL_GENERAL",
+            "qwen-vision": "AEGIS_MODEL_VISION",
+            "qwen-coder": "AEGIS_MODEL_CODER",
+            "llama-small": "AEGIS_MODEL_LIGHTWEIGHT",
+        }
         for name, entry in raw.get("models", {}).items():
             caps = [ModelCapability(c) for c in entry.get("capabilities", [])]
+            env_name = model_env.get(name) or f"AEGIS_MODEL_{re.sub(r'[^A-Za-z0-9]+', '_', name).upper()}"
+            model_tag = os.getenv(env_name, entry["model"]) if env_name else entry["model"]
             configs[name] = ModelConfig(
                 name=name,
                 provider=entry["provider"],
-                model=entry["model"],
+                model=model_tag,
                 capabilities=caps,
                 context_length=entry.get("context_length", 8192),
                 priority=entry.get("priority", 5),
                 is_fallback=entry.get("is_fallback", False),
+                supports_thinking=entry.get("supports_thinking", False),
             )
-        return cls(configs, base_url)
+        return cls(configs, base_url or os.getenv("AEGIS_OLLAMA_BASE_URL", "http://localhost:11434"))
 
     # -- Queries --------------------------------------------------------
 
@@ -118,13 +145,14 @@ class ModelRegistry:
 
     async def check_availability(self) -> dict[str, bool]:
         """Health‑check every registered model and return name → status."""
-        results: dict[str, bool] = {}
-        for name, provider in self._providers.items():
+        async def check(name: str, provider: ModelProvider) -> tuple[str, bool]:
             try:
-                results[name] = await provider.health_check()
+                return name, await provider.health_check()
             except Exception:
-                results[name] = False
-        return results
+                return name, False
+
+        pairs = await asyncio.gather(*(check(name, provider) for name, provider in self._providers.items()))
+        return dict(pairs)
 
     @property
     def provider_names(self) -> list[str]:

@@ -17,6 +17,13 @@ if errorlevel 1 exit /b 1
 
 where cmake >nul 2>nul
 if not errorlevel 1 (
+  if exist native\build\CMakeCache.txt (
+    findstr /b /c:"CMAKE_HOME_DIRECTORY:INTERNAL=%CD%\native" native\build\CMakeCache.txt >nul
+    if errorlevel 1 (
+      echo Stale CMake cache detected; rebuilding native helper for this checkout.
+      rmdir /s /q native\build
+    )
+  )
   cmake -S native -B native\build -DCMAKE_BUILD_TYPE=Release
   if errorlevel 1 exit /b 1
   cmake --build native\build --config Release

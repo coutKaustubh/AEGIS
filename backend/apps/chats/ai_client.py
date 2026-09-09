@@ -41,6 +41,24 @@ class AIClient:
     def health(self) -> dict[str, Any]:
         return self._request("GET", "/api/health")
 
+    def models(self) -> dict[str, Any]:
+        return self._request("GET", "/api/models")
+
+    def knowledge_search(self, query: str, top_k: int = 5) -> Any:
+        return self._request("POST", "/api/knowledge/search", {"query": query, "top_k": top_k})
+
+    def knowledge_ask(self, query: str, top_k: int = 5) -> dict[str, Any]:
+        return self._request("POST", "/api/knowledge/ask", {"query": query, "top_k": top_k})
+
+    def knowledge_ingest(self, path: str, source: str, metadata: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._request("POST", "/api/knowledge/ingest", {"path": path, "source": source, "metadata": metadata or {}})
+
+    def audit_verify(self) -> dict[str, Any]:
+        return self._request("GET", "/api/audit/verify")
+
+    def platform(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+        return self._request(method, path, payload)
+
     def create_task(
         self,
         *,
@@ -74,6 +92,9 @@ class AIClient:
     def get_network(self, execution_id: str) -> dict[str, Any]:
         return self._request("GET", f"/api/tasks/{execution_id}/network")
 
+    def cancel_task(self, execution_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/api/tasks/{execution_id}/cancel")
+
     def get_events(self, execution_id: str) -> list[dict[str, Any]]:
         """Read the AI service's completed SSE event stream into JSON events."""
         raw = self._request_text("GET", f"/api/tasks/{execution_id}/events")
@@ -103,14 +124,12 @@ class AIClient:
                 raise AIServiceTimeout(f"AI task {execution_id} did not finish in time")
             time.sleep(interval)
 
-    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def _request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> Any:
         raw = self._request_text(method, path, payload)
         try:
             result = json.loads(raw)
         except json.JSONDecodeError as exc:
             raise AIServiceError("AI service returned invalid JSON") from exc
-        if not isinstance(result, dict):
-            raise AIServiceError("AI service returned an invalid JSON object")
         return result
 
     def _request_text(self, method: str, path: str, payload: dict[str, Any] | None = None) -> str:

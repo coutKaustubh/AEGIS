@@ -24,8 +24,24 @@ from apps.chats.serializers import (
     AskChatSerializer,
     PermissionRequestSerializer,
 )
+from datetime import timedelta
+from django.utils import timezone
 from apps.chats.ai_client import AIClient, AIServiceError
-from apps.chats.services import ask_ai, start_ai, _save_uploaded_files
+from apps.chats.services import ask_ai, start_ai, _save_uploaded_files, set_session_title, TaskConflictError, recover_stale_tasks, cancel_task
+
+
+def expire_stale_permissions() -> None:
+    """Automatically mark timed-out pending approvals as expired."""
+    now = timezone.now()
+    permission_requests.objects.filter(
+        status="pending"
+    ).filter(
+        Q(expires_at__lte=now) | Q(created_at__lte=now - timedelta(seconds=300))
+    ).update(
+        status="expired",
+        decision_reason="Approval request expired after timeout",
+        updated_at=now,
+    )
 
 
 class EventStreamRenderer(BaseRenderer):
@@ -80,6 +96,11 @@ class ChatSessionDetailView(generics.RetrieveUpdateDestroyAPIView):
         # Scoped to authenticated user — prevents cross-user access.
         return chat_sessions.objects.filter(user=self.request.user)
 
+    def get_object(self):
+        obj = super().get_object()
+        recover_stale_tasks(session=obj)
+        return obj
+
 
 # ──────────────────────────────────────────────
 #  Chat (message) views
@@ -130,6 +151,7 @@ class ChatCreateView(generics.CreateAPIView):
             )
 
         # Create the chat message under the resolved session.
+        set_session_title(session, serializer.validated_data["content"], has_files=False)
         chat = chats.objects.create(
             session=session,
             role=serializer.validated_data["role"],
@@ -157,13 +179,19 @@ class ChatAskView(APIView):
         serializer = AskChatSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         uploaded_files = request.FILES.getlist("files")
-        result = start_ai(
-            user=request.user,
-            content=serializer.validated_data["content"],
-            session_id=serializer.validated_data.get("chat_session_id"),
-            uploaded_files=uploaded_files,
-            metadata=serializer.validated_data.get("metadata", {}),
-        )
+        try:
+            result = start_ai(
+                user=request.user,
+                content=serializer.validated_data["content"],
+                session_id=serializer.validated_data.get("chat_session_id"),
+                uploaded_files=uploaded_files,
+                metadata=serializer.validated_data.get("metadata", {}),
+            )
+        except TaskConflictError as exc:
+            return Response({
+                "error": "task_conflict",
+                "detail": str(exc),
+            }, status=status.HTTP_409_CONFLICT)
         task = result["task"]
         return Response({
             "chat_session_id": str(task.session_id),
@@ -225,7 +253,14 @@ class DocumentUploadView(APIView):
         session = chat_sessions.objects.create(user=request.user, chat_title="Document Ingestion")
         message = chats.objects.create(session=session, role="system", content="Document ingestion", message_type="file")
         saved = _save_uploaded_files(message, uploaded)
-        return Response({"files": saved, "session_id": str(session.id)}, status=status.HTTP_201_CREATED)
+        client = AIClient()
+        indexed = []
+        for item in saved:
+            try:
+                indexed.append(client.knowledge_ingest(item["path"], item["name"], {"user_id": request.user.pk}))
+            except AIServiceError as exc:
+                indexed.append({"source": item["name"], "error": str(exc)})
+        return Response({"files": saved, "indexed": indexed, "session_id": str(session.id)}, status=status.HTTP_201_CREATED)
 
 
 class AttachmentDownloadView(APIView):
@@ -285,6 +320,25 @@ class AITaskDetailView(generics.RetrieveAPIView):
     def get_queryset(self):
         return ai_tasks.objects.filter(user=self.request.user)
 
+    def get_object(self):
+        obj = super().get_object()
+        recover_stale_tasks(session=obj.session)
+        obj.refresh_from_db()
+        return obj
+
+
+class AITaskCancelView(APIView):
+    """POST /api/v1/chats/tasks/<id>/cancel/ — explicitly cancel an active task."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, id):
+        try:
+            task = cancel_task(task_id=str(id), user=request.user)
+        except ai_tasks.DoesNotExist:
+            return Response({"detail": "AI task not found."}, status=status.HTTP_404_NOT_FOUND)
+        return Response(AITaskSerializer(task).data, status=status.HTTP_200_OK)
+
 
 class AITaskArtifactsView(generics.ListAPIView):
     permission_classes = [IsAuthenticated]
@@ -296,7 +350,15 @@ class AITaskArtifactsView(generics.ListAPIView):
 
 def _resolve_artifact_path(record: artifacts) -> Path:
     raw = Path(record.path)
-    candidate = raw if raw.is_absolute() else Path(settings.AI_ARTIFACT_ROOT) / raw
+    if raw.is_absolute():
+        candidate = raw
+    else:
+        # Older inspection runs emitted paths such as
+        # ``workspace/outputs/inspect_...`` relative to the AI package.
+        # Resolve those against the configured artifact root without
+        # accidentally producing ``workspace/workspace/outputs``.
+        parts = raw.parts[1:] if raw.parts and raw.parts[0] == Path(settings.AI_ARTIFACT_ROOT).name else raw.parts
+        candidate = Path(settings.AI_ARTIFACT_ROOT).resolve().joinpath(*parts)
     candidate = candidate.resolve()
     allowed_roots = [
         Path(settings.AI_ARTIFACT_ROOT).resolve(),
@@ -341,6 +403,7 @@ class AITaskPermissionListView(generics.ListAPIView):
     serializer_class = PermissionRequestSerializer
 
     def get_queryset(self):
+        expire_stale_permissions()
         visibility = Q() if self.request.user.is_staff else Q(task__user=self.request.user)
         return permission_requests.objects.filter(task__id=self.kwargs["id"]).filter(visibility)
 
@@ -352,6 +415,7 @@ class PermissionQueueView(generics.ListAPIView):
     serializer_class = PermissionRequestSerializer
 
     def get_queryset(self):
+        expire_stale_permissions()
         visibility = Q() if self.request.user.is_staff else Q(task__user=self.request.user)
         queryset = permission_requests.objects.filter(visibility)
         requested = self.request.query_params.get("status")
@@ -364,6 +428,7 @@ class AITaskPermissionDecisionView(APIView):
     permission_classes = [IsAuthenticated]
 
     def post(self, request, id, request_id, decision):
+        expire_stale_permissions()
         try:
             query = Q() if request.user.is_staff else Q(task__user=request.user)
             permission = permission_requests.objects.select_related("task").get(
@@ -371,6 +436,8 @@ class AITaskPermissionDecisionView(APIView):
             )
         except permission_requests.DoesNotExist:
             return Response({"detail": "Permission request not found."}, status=status.HTTP_404_NOT_FOUND)
+        if permission.status == "expired":
+            return Response({"detail": "Permission request has expired."}, status=status.HTTP_409_CONFLICT)
         if permission.status != "pending":
             return Response({"detail": f"Permission is already {permission.status}."}, status=status.HTTP_409_CONFLICT)
         if decision not in {"approve", "deny"}:
@@ -429,8 +496,14 @@ class AITaskEventsView(APIView):
                         if event_task_id is not None and str(event_task_id) != str(task.id):
                             continue
                         yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-                current_status = ai_tasks.objects.filter(id=task.id).values_list("status", flat=True).first()
+                current_record = ai_tasks.objects.filter(id=task.id).values("status", "updated_at").first()
+                if not current_record:
+                    break
+                current_status = current_record["status"]
                 if current_status in {"success", "failed", "cancelled"} and position >= (log_path.stat().st_size if log_path.exists() else 0):
+                    break
+                if current_record["updated_at"] < timezone.now() - timedelta(seconds=180):
+                    recover_stale_tasks(session=task.session, max_age_seconds=180)
                     break
                 time.sleep(0.25)
 

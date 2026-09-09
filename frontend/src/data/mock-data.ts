@@ -27,16 +27,16 @@ export const mockDashboardMetrics: DashboardMetrics = {
 };
 
 export const mockRecentTasks: RecentTask[] = [
-  { id: 'task-001', task: 'Inspection Report Analysis — Unit 4 Distillation Column', type: 'Document Analysis', status: 'completed', model: 'Mistral-7B', createdAt: '2026-09-03T14:30:00Z' },
-  { id: 'task-002', task: 'Vendor Comparison — Valve Suppliers Q3', type: 'Comparison', status: 'running', model: 'LLaMA-3-70B', createdAt: '2026-09-03T13:45:00Z' },
-  { id: 'task-003', task: 'Safety Procedure Search — H2S Emergency Protocol', type: 'Knowledge Search', status: 'completed', model: 'Mistral-7B', createdAt: '2026-09-03T12:00:00Z' },
-  { id: 'task-004', task: 'Pressure Loss Calculation — Pipeline Section 7B', type: 'Code Execution', status: 'failed', model: 'CodeLlama-34B', createdAt: '2026-09-03T11:15:00Z' },
+  { id: 'task-001', task: 'Inspection Report Analysis — Unit 4 Distillation Column', type: 'Document Analysis', status: 'completed', model: 'qwen3.5:9b', createdAt: '2026-09-03T14:30:00Z' },
+  { id: 'task-002', task: 'Vendor Comparison — Valve Suppliers Q3', type: 'Comparison', status: 'running', model: 'qwen3.5:9b', createdAt: '2026-09-03T13:45:00Z' },
+  { id: 'task-003', task: 'Safety Procedure Search — H2S Emergency Protocol', type: 'Knowledge Search', status: 'completed', model: 'qwen3.5:9b', createdAt: '2026-09-03T12:00:00Z' },
+  { id: 'task-004', task: 'Pressure Loss Calculation — Pipeline Section 7B', type: 'Code Execution', status: 'failed', model: 'qwen3-coder:30b-a3b-q4_K_M', createdAt: '2026-09-03T11:15:00Z' },
   { id: 'task-005', task: 'Engineering Drawing Analysis — P&ID Revision 12', type: 'Vision Analysis', status: 'completed', model: 'LLaVA-13B', createdAt: '2026-09-03T10:00:00Z' },
-  { id: 'task-006', task: 'Monthly Maintenance Summary — August 2026', type: 'Document Generation', status: 'pending', model: 'LLaMA-3-70B', createdAt: '2026-09-03T09:30:00Z' },
+  { id: 'task-006', task: 'Monthly Maintenance Summary — August 2026', type: 'Document Generation', status: 'pending', model: 'qwen3.5:9b', createdAt: '2026-09-03T09:30:00Z' },
 ];
 
 export const mockSystemComponents: SystemComponent[] = [
-  { id: 'llm', name: 'Local LLM', status: 'operational', detail: 'LLaMA-3-70B, Mistral-7B loaded', lastChecked: '2026-09-03T14:55:00Z' },
+  { id: 'llm', name: 'Local Ollama Models', status: 'operational', detail: 'Configured models loaded from AEGIS registry', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'vision', name: 'Vision Model', status: 'operational', detail: 'LLaVA-13B ready', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'ocr', name: 'OCR Engine', status: 'operational', detail: 'Tesseract + DocTR active', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'kb', name: 'Knowledge Base', status: 'operational', detail: '856 documents indexed', lastChecked: '2026-09-03T14:55:00Z' },
@@ -57,10 +57,10 @@ export const mockSovereigntyMetrics: SovereigntyMetrics = {
 // ─── Conversations ─────────────────────────────────────────────────────────────
 
 export const mockConversations: Conversation[] = [
-  { id: 'conv-001', title: 'Inspection Report Analysis — Unit 4', taskType: 'Document Analysis', model: 'Mistral-7B', status: 'completed', createdAt: '2026-09-03T14:30:00Z', updatedAt: '2026-09-03T14:45:00Z', messageCount: 6 },
-  { id: 'conv-002', title: 'Vendor Comparison — Valve Suppliers', taskType: 'Comparison', model: 'LLaMA-3-70B', status: 'active', createdAt: '2026-09-03T13:45:00Z', updatedAt: '2026-09-03T14:50:00Z', messageCount: 4 },
-  { id: 'conv-003', title: 'H2S Emergency Protocol Search', taskType: 'Knowledge Search', model: 'Mistral-7B', status: 'completed', createdAt: '2026-09-03T12:00:00Z', updatedAt: '2026-09-03T12:15:00Z', messageCount: 3 },
-  { id: 'conv-004', title: 'Pipeline Pressure Calculation', taskType: 'Code Execution', model: 'CodeLlama-34B', status: 'failed', createdAt: '2026-09-03T11:15:00Z', updatedAt: '2026-09-03T11:20:00Z', messageCount: 2 },
+  { id: 'conv-001', title: 'Inspection Report Analysis — Unit 4', taskType: 'Document Analysis', model: 'qwen3.5:9b', status: 'completed', createdAt: '2026-09-03T14:30:00Z', updatedAt: '2026-09-03T14:45:00Z', messageCount: 6 },
+  { id: 'conv-002', title: 'Vendor Comparison — Valve Suppliers', taskType: 'Comparison', model: 'qwen3.5:9b', status: 'active', createdAt: '2026-09-03T13:45:00Z', updatedAt: '2026-09-03T14:50:00Z', messageCount: 4 },
+  { id: 'conv-003', title: 'H2S Emergency Protocol Search', taskType: 'Knowledge Search', model: 'qwen3.5:9b', status: 'completed', createdAt: '2026-09-03T12:00:00Z', updatedAt: '2026-09-03T12:15:00Z', messageCount: 3 },
+  { id: 'conv-004', title: 'Pipeline Pressure Calculation', taskType: 'Code Execution', model: 'qwen3-coder:30b-a3b-q4_K_M', status: 'failed', createdAt: '2026-09-03T11:15:00Z', updatedAt: '2026-09-03T11:20:00Z', messageCount: 2 },
   { id: 'conv-005', title: 'P&ID Drawing Analysis Rev.12', taskType: 'Vision Analysis', model: 'LLaVA-13B', status: 'completed', createdAt: '2026-09-03T10:00:00Z', updatedAt: '2026-09-03T10:30:00Z', messageCount: 5 },
 ];
 

@@ -17,7 +17,7 @@ from runtime.actions import ActionParseError, parse_action
 from runtime.task_state import StepStatus
 from runtime.tool_policy import ApprovalRequired
 from runtime.verification import verify_tool_result, verify_plan
-from runtime.prompts import SYSTEM_PROMPT
+from runtime.prompts import SYSTEM_PROMPT, format_tool_definitions
 
 
 def _append(existing: list[Any] | None, new: list[Any] | None) -> list[Any]:
@@ -72,7 +72,13 @@ def build_coding_graph(provider: Any, tool_registry: Any, *, allowed_tools: set[
     names = set(allowed_tools or tool_registry.list_names())
 
     async def reason(state: CodingState) -> dict[str, Any]:
-        tool_text = "\n".join(f"- {n}: {tool_registry.get(n).description}" for n in sorted(names))
+        tool_objs = []
+        for n in sorted(names):
+            try:
+                tool_objs.append(tool_registry.get(n))
+            except Exception:
+                tool_objs.append(n)
+        tool_text = format_tool_definitions(tool_objs)
         messages = state.get("messages", [])
         if not messages or not isinstance(messages[0], SystemMessage):
             messages = [SystemMessage(content=(
@@ -239,7 +245,15 @@ def build_coding_graph(provider: Any, tool_registry: Any, *, allowed_tools: set[
         result = state.get("tool_result", {})
         results = [*state.get("tool_results", []), result]
         tool_name = result.get("tool", "unknown")
-        messages = [*state.get("messages", []), HumanMessage(content=f"TOOL RESULT [{tool_name}]: {json.dumps(result, default=str)[:12000]}")]
+        observation = f"TOOL RESULT [{tool_name}]: {json.dumps(result, default=str)[:12000]}"
+        if tool_name == "read_file" and result.get("error") == "NotFile":
+            observation += (
+                "\nThe requested path does not exist. If the user asked to create or save it, "
+                "use create_file or create_python_script now; do not retry read_file. "
+                "If the user asked to fix an existing file, use find_files or search_files "
+                "to locate a likely spelling correction before reading again."
+            )
+        messages = [*state.get("messages", []), HumanMessage(content=observation)]
         verification = verify_tool_result(result)
         step_events = [_event("step_succeeded" if verification.get("passed") else "step_failed",
                               tool=tool_name, verification=verification)]
@@ -336,16 +350,30 @@ async def run_coding_graph(provider: Any, tool_registry: Any, request: str, *, a
                                max_iterations=max_iterations, max_invalid_actions=max_invalid_actions,
                                on_model_call=on_model_call, on_tool_call=on_tool_call,
                                policy_engine=policy_engine, approval_callback=approval_callback)
-    return await graph.ainvoke({"user_request": request, "original_request": request,
-                                "normalized_request": request, "status": "planned",
-                                "messages": messages or [HumanMessage(content=request)],
-                                "allowed_tools": list(allowed_tools or tool_registry.list_names()),
-                                "encoded_images": encoded_images or [], "plan": [], "current_step_index": 0,
-                                "tool_call_count": 0, "mutation_count": 0, "verification": {}, "evidence": [],
-                                "repair_history": [],
-                                "action_signatures": [],
-                                "failed_signatures": [],
-                                "max_tool_calls": max_tool_calls, "max_mutations": max_mutations,
-                                "events": [], "tool_results": [], "errors": [], "iteration": 0,
-                                "invalid_actions": 0, "max_iterations": max_iterations,
-                                "max_invalid_actions": max_invalid_actions, "phase": "reason"})
+    initial_state: CodingState = {
+        "user_request": request, "original_request": request,
+        "normalized_request": request, "status": "planned",
+        "messages": messages or [HumanMessage(content=request)],
+        "allowed_tools": list(allowed_tools or tool_registry.list_names()),
+        "encoded_images": encoded_images or [], "plan": [], "current_step_index": 0,
+        "tool_call_count": 0, "mutation_count": 0, "verification": {}, "evidence": [],
+        "repair_history": [],
+        "action_signatures": [],
+        "failed_signatures": [],
+        "max_tool_calls": max_tool_calls, "max_mutations": max_mutations,
+        "events": [], "tool_results": [], "errors": [], "iteration": 0,
+        "invalid_actions": 0, "max_iterations": max_iterations,
+        "max_invalid_actions": max_invalid_actions, "phase": "reason"
+    }
+    try:
+        return await graph.ainvoke(initial_state, config={"recursion_limit": max(500, (max_iterations + 5) * 10)})
+    except Exception as exc:
+        if "recursion limit" in str(exc).lower():
+            return {
+                **initial_state,
+                "terminal_status": "blocked",
+                "final_answer": f"Maximum tool-loop iterations ({max_iterations}) reached.",
+                "phase": "finish",
+                "events": [_event("safe_error", error=f"Maximum tool-loop iterations ({max_iterations}) reached.")],
+            }
+        raise

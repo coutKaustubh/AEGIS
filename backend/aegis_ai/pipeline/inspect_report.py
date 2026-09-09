@@ -10,6 +10,8 @@ from __future__ import annotations
 import json
 import re
 import time
+import os
+import httpx
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -553,6 +555,28 @@ def run_inspect_report(
         ocr_path = out / "ocr.txt"
         ocr_path.write_text(ocr_text, encoding="utf-8")
         result["artifacts"]["ocr_text"] = str(ocr_path)
+        # Keep OCR deterministic and local, then ask the lightweight Ollama
+        # model for a concise human-readable summary of the extracted text.
+        summary_text = " ".join(ocr_text.split())[:12000]
+        model_summary = ""
+        if summary_text:
+            try:
+                response = httpx.post(
+                    f"{os.getenv('AEGIS_OLLAMA_BASE_URL', 'http://localhost:11434').rstrip('/')}/api/generate",
+                    json={
+                        "model": os.getenv("AEGIS_MODEL_LIGHTWEIGHT", "Qwen2.5:1.5b"),
+                        "prompt": "Summarize this OCR text in 5 concise factual bullet points. Do not invent details.\n\n" + summary_text,
+                        "stream": False,
+                    },
+                    timeout=float(os.getenv("AEGIS_SUMMARY_TIMEOUT_SECONDS", "45")),
+                )
+                response.raise_for_status()
+                model_summary = str(response.json().get("response", "")).strip()
+            except Exception as exc:
+                result["errors"].append(f"lightweight summary unavailable: {exc}")
+        summary_path = out / "ocr_summary.txt"
+        summary_path.write_text(model_summary or "No model summary was available; see ocr.txt.", encoding="utf-8")
+        result["artifacts"]["ocr_summary"] = str(summary_path)
         console.print(f"  [green]✓[/green] OCR complete: {len(blocks)} text blocks")
 
         # Phase 3: Extract findings
@@ -629,6 +653,11 @@ def run_inspect_report(
         total_ms = (time.perf_counter() - started) * 1000
         result["status"] = "complete"
         result["total_ms"] = round(total_ms, 2)
+        preview = model_summary or " ".join(ocr_text.split())[:800]
+        result["summary"] = (
+            f"Document processed successfully: {n_findings} findings and "
+            f"{n_uncertainties} uncertainties.\n\nLightweight model summary:\n{preview}"
+        )
 
         # Terminal summary
         console.print()
