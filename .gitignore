@@ -23,4 +23,6 @@ db.sqlite3-journal
 .vscode/
 .idea/
 .DS_Store
-Thumbs.db
+
+logs/
+shared/
