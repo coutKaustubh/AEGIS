@@ -98,7 +98,8 @@ function saveStoredUsers(users: User[]) {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
-  if (!USE_MOCK && getAccessToken()) {
+  if (!USE_MOCK) {
+    if (!getAccessToken()) return null;
     try {
       return normalizeUser(await apiClient.get<Record<string, unknown>>('/auth/me/'));
     } catch {
@@ -175,14 +176,14 @@ export async function login(identifier: string, password = ''): Promise<User> {
 export async function logout(): Promise<void> {
   if (!USE_MOCK) {
     clearTokens();
-    return;
   }
-  await new Promise((resolve) => setTimeout(resolve, 150));
   try {
     localStorage.removeItem(AUTH_STORAGE_KEY);
+    localStorage.removeItem('aegis_active_session_id');
   } catch {
     // ignore
   }
+  if (USE_MOCK) await new Promise((resolve) => setTimeout(resolve, 150));
 }
 
 export function getManagedUsers(): User[] {

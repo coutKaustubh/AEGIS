@@ -13,7 +13,7 @@ export interface AegisModel {
 export const AEGIS_MODELS: AegisModel[] = [
   {
     id: 'qwen-general',
-    name: 'qwen3.5:9b',
+    name: 'qwen3.5:4b',
     description: 'Deep analysis & multi-step reasoning for complex industrial queries',
     capability: 'Reasoning',
     contextWindow: '32K',
@@ -21,7 +21,7 @@ export const AEGIS_MODELS: AegisModel[] = [
   },
   {
     id: 'llama-small',
-    name: 'Qwen2.5:1.5b',
+    name: 'llama3.2:1b',
     description: 'Low-latency responses for quick lookups and simple tasks',
     capability: 'Speed',
     contextWindow: '8K',
@@ -29,7 +29,7 @@ export const AEGIS_MODELS: AegisModel[] = [
   },
   {
     id: 'qwen-vision',
-    name: 'qwen3-vl:8b',
+    name: 'qwen3-vl:4b',
     description: 'P&ID drawings, engineering diagrams, and image analysis',
     capability: 'Vision',
     contextWindow: '32K',

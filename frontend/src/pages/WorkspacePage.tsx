@@ -4,6 +4,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
+  ChevronDown,
   Download,
   FileText,
   Loader2,
@@ -96,6 +97,17 @@ function workflowLabel(type: string, payload: Record<string, unknown>): string {
     final: 'response prepared',
   };
   return labels[type] || String(payload.message || payload.action || type.replaceAll('_', ' '));
+}
+
+function executionStage(activity: AgentActivity | undefined, sending: boolean): string {
+  if (!activity) return sending ? 'Thinking' : 'Ready';
+  const action = activity.action.toLowerCase();
+  if (/approval|permission/.test(action)) return 'Awaiting approval';
+  if (/verification|validate|review/.test(action)) return 'Verifying';
+  if (/tool|file|ocr|search|command|sandbox/.test(action)) return 'Working with files';
+  if (/specialist|model|response|final|generat/.test(action)) return 'Generating';
+  if (/plan|classif|capability|reason/.test(action)) return 'Thinking';
+  return sending ? 'Working' : 'Ready';
 }
 
 function toGeneratedArtifact(artifact: ArtifactRecord): GeneratedArtifact {
@@ -254,6 +266,7 @@ export default function WorkspacePage() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
+  const [showTrace, setShowTrace] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const selectSession = (session: ChatSessionRecord) => {
@@ -664,8 +677,19 @@ export default function WorkspacePage() {
   const availableModels = Object.values(modelAvailability).filter(Boolean).length;
   const totalModels = Object.keys(modelAvailability).length || 4;
 
+  const latestActivity = activities[activities.length - 1];
+  const executionStatus = permissions.some((permission) => permission.status === 'pending')
+    ? 'Awaiting approval'
+    : sending
+      ? executionStage(latestActivity, sending)
+      : task?.status === 'success'
+        ? 'Response ready'
+        : task?.status === 'failed'
+          ? 'Execution failed safely'
+          : 'Ready';
+
   return (
-    <div className="-m-6 lg:-m-8 flex h-[calc(100vh)] min-h-[720px] flex-col overflow-hidden bg-[#090a0c] text-[#e7e9ee]">
+    <div className="aegis-workspace -m-6 lg:-m-8 flex h-[calc(100vh)] min-h-[720px] flex-col overflow-hidden bg-bg-primary text-text-primary">
       <header className="flex shrink-0 items-center justify-between border-b border-white/10 bg-[#0e1013] px-5 py-3">
         <div className="flex items-center gap-3"><div className="flex h-8 w-8 items-center justify-center rounded border border-white/30 font-mono text-xs">AE</div><div><div className="font-mono text-sm tracking-[0.18em] text-white">AEGIS</div><div className="text-[10px] text-white/45">Sovereign AI Workbench</div></div></div>
         <div className="hidden items-center gap-5 font-mono text-[10px] uppercase tracking-wider text-white/45 md:flex"><span>local runtime <b className="text-emerald-400">ollama</b></span><span>models <b className="text-emerald-400">{health ? `${availableModels}/${totalModels} available` : 'checking'}</b></span><span>policy <b className="text-emerald-400">enforced</b></span><span>sandbox <b className="text-emerald-400">isolated</b></span><span>network <b className="text-emerald-400">restricted</b></span></div>
@@ -696,7 +720,7 @@ export default function WorkspacePage() {
               />
             ))}
 
-            {(activities.length > 0 || sending) && <section className="mb-6 rounded border border-white/10 bg-[#0e1013] p-4"><div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-white/45"><Terminal className="h-3.5 w-3.5 text-cyan-300" /> execution trace</div><div className="space-y-2 font-mono text-xs">{activities.map((activity) => <div key={activity.id} className="flex gap-3"><span className={cn('w-3 text-center', activity.status === 'pending' ? 'text-amber-300' : /failed|error|rejected/i.test(activity.action) ? 'text-red-300' : 'text-emerald-300')}>{activity.status === 'pending' ? '!' : /failed|error|rejected/i.test(activity.action) ? '×' : '✓'}</span><span className="text-white/80">{activity.detail}</span></div>)}{sending && <div className="flex gap-3 text-white/45"><Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-300" /> running local workflow…</div>}</div></section>}
+            {(activities.length > 0 || sending) && <section className="mb-6 rounded border border-border-subtle bg-bg-surface p-3"><div className="flex items-center justify-between gap-3"><div className="flex min-w-0 items-center gap-2"><Loader2 className={cn('h-4 w-4 shrink-0 text-accent-primary', sending && 'animate-spin')} /><div className="min-w-0"><div className="text-xs font-medium text-text-primary">{executionStatus}</div><div className="text-[10px] text-text-muted">AEGIS is processing locally</div></div></div><button type="button" onClick={() => setShowTrace((current) => !current)} className="inline-flex shrink-0 items-center gap-1 rounded px-2 py-1 text-[10px] font-medium text-text-secondary hover:bg-bg-subtle hover:text-text-primary" aria-expanded={showTrace}><Terminal className="h-3 w-3" />{activities.length} events<ChevronDown className={cn('h-3 w-3 transition-transform', showTrace && 'rotate-180')} /></button></div>{showTrace && <div className="mt-3 max-h-64 space-y-2 overflow-y-auto border-t border-border-subtle pt-3 font-mono text-xs">{activities.map((activity) => <div key={activity.id} className="flex gap-3"><span className={cn('w-3 text-center', activity.status === 'pending' ? 'text-status-warning' : /failed|error|rejected/i.test(activity.action) ? 'text-status-danger' : 'text-status-success')}>{activity.status === 'pending' ? '!' : /failed|error|rejected/i.test(activity.action) ? '×' : '✓'}</span><span className="text-text-secondary">{activity.detail}</span></div>)}{sending && <div className="flex gap-3 text-text-muted"><Loader2 className="h-3.5 w-3.5 animate-spin text-accent-primary" /> generating response…</div>}</div>}</section>}
 
             {activities.some((activity) => activity.action === 'command started' || activity.action === 'command finished') && <section className="mb-6 rounded border border-cyan-300/25 bg-[#07090b] p-4"><div className="mb-3 flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.16em] text-cyan-200"><Terminal className="h-3.5 w-3.5" /> sandbox terminal</div><div className="space-y-1 font-mono text-xs text-emerald-300">{activities.filter((activity) => activity.action === 'command started' || activity.action === 'command finished').map((activity) => <div key={`terminal-${activity.id}`}><span className="mr-2 text-white/35">$</span>{activity.detail}</div>)}</div></section>}
 

@@ -202,3 +202,82 @@
     transition-timing-function: ease-out;
   }
 }
+
+/* The workspace arrived with a few legacy literal colour utilities. Keep
+   them visually compatible with the global theme until those JSX classes are
+   gradually replaced by semantic tokens. */
+.aegis-workspace [class*="bg-[#"] {
+  background-color: var(--color-bg-surface) !important;
+}
+
+.aegis-workspace [class*="text-white"] {
+  color: var(--color-text-primary) !important;
+}
+
+.aegis-workspace [class*="border-white"] {
+  border-color: var(--color-border-subtle) !important;
+}
+
+.aegis-workspace [class*="bg-white"] {
+  background-color: var(--color-bg-subtle) !important;
+}
+
+.aegis-workspace [class*="text-cyan"],
+.aegis-workspace [class*="text-cyan-"] {
+  color: var(--color-accent) !important;
+}
+
+.aegis-workspace [class*="border-cyan"] {
+  border-color: var(--color-border-accent) !important;
+}
+
+.aegis-workspace [class*="bg-cyan"] {
+  background-color: var(--color-accent-subtle) !important;
+}
+
+.aegis-workspace [class*="text-emerald"],
+.aegis-workspace [class*="text-emerald-"] {
+  color: var(--color-success) !important;
+}
+
+.aegis-workspace [class*="border-emerald"] {
+  border-color: color-mix(in srgb, var(--color-success) 30%, transparent) !important;
+}
+
+.aegis-workspace [class*="bg-emerald"] {
+  background-color: var(--color-success-muted) !important;
+}
+
+.aegis-workspace [class*="text-amber"],
+.aegis-workspace [class*="text-amber-"] {
+  color: var(--color-warning) !important;
+}
+
+.aegis-workspace [class*="border-amber"] {
+  border-color: color-mix(in srgb, var(--color-warning) 30%, transparent) !important;
+}
+
+.aegis-workspace [class*="bg-amber"] {
+  background-color: var(--color-warning-muted) !important;
+}
+
+.aegis-workspace [class*="text-red"],
+.aegis-workspace [class*="text-red-"],
+.aegis-workspace [class*="text-rose"],
+.aegis-workspace [class*="text-rose-"] {
+  color: var(--color-danger) !important;
+}
+
+.aegis-workspace [class*="border-red"],
+.aegis-workspace [class*="border-rose"] {
+  border-color: color-mix(in srgb, var(--color-danger) 30%, transparent) !important;
+}
+
+.aegis-workspace [class*="bg-red"],
+.aegis-workspace [class*="bg-rose"] {
+  background-color: var(--color-danger-muted) !important;
+}
+
+.aegis-workspace [class*="shadow-amber"] {
+  box-shadow: none !important;
+}

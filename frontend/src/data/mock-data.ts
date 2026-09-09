@@ -27,17 +27,17 @@ export const mockDashboardMetrics: DashboardMetrics = {
 };
 
 export const mockRecentTasks: RecentTask[] = [
-  { id: 'task-001', task: 'Inspection Report Analysis — Unit 4 Distillation Column', type: 'Document Analysis', status: 'completed', model: 'qwen3.5:9b', createdAt: '2026-09-03T14:30:00Z' },
-  { id: 'task-002', task: 'Vendor Comparison — Valve Suppliers Q3', type: 'Comparison', status: 'running', model: 'qwen3.5:9b', createdAt: '2026-09-03T13:45:00Z' },
-  { id: 'task-003', task: 'Safety Procedure Search — H2S Emergency Protocol', type: 'Knowledge Search', status: 'completed', model: 'qwen3.5:9b', createdAt: '2026-09-03T12:00:00Z' },
-  { id: 'task-004', task: 'Pressure Loss Calculation — Pipeline Section 7B', type: 'Code Execution', status: 'failed', model: 'qwen3-coder:30b-a3b-q4_K_M', createdAt: '2026-09-03T11:15:00Z' },
-  { id: 'task-005', task: 'Engineering Drawing Analysis — P&ID Revision 12', type: 'Vision Analysis', status: 'completed', model: 'LLaVA-13B', createdAt: '2026-09-03T10:00:00Z' },
-  { id: 'task-006', task: 'Monthly Maintenance Summary — August 2026', type: 'Document Generation', status: 'pending', model: 'qwen3.5:9b', createdAt: '2026-09-03T09:30:00Z' },
+  { id: 'task-001', task: 'Inspection Report Analysis — Unit 4 Distillation Column', type: 'Document Analysis', status: 'completed', model: 'qwen3.5:4b', createdAt: '2026-09-03T14:30:00Z' },
+  { id: 'task-002', task: 'Vendor Comparison — Valve Suppliers Q3', type: 'Comparison', status: 'running', model: 'qwen3.5:4b', createdAt: '2026-09-03T13:45:00Z' },
+  { id: 'task-003', task: 'Safety Procedure Search — H2S Emergency Protocol', type: 'Knowledge Search', status: 'completed', model: 'qwen3.5:4b', createdAt: '2026-09-03T12:00:00Z' },
+  { id: 'task-004', task: 'Pressure Loss Calculation — Pipeline Section 7B', type: 'Code Execution', status: 'failed', model: 'qwen2.5-coder:7b', createdAt: '2026-09-03T11:15:00Z' },
+  { id: 'task-005', task: 'Engineering Drawing Analysis — P&ID Revision 12', type: 'Vision Analysis', status: 'completed', model: 'qwen3-vl:4b', createdAt: '2026-09-03T10:00:00Z' },
+  { id: 'task-006', task: 'Monthly Maintenance Summary — August 2026', type: 'Document Generation', status: 'pending', model: 'qwen3.5:4b', createdAt: '2026-09-03T09:30:00Z' },
 ];
 
 export const mockSystemComponents: SystemComponent[] = [
   { id: 'llm', name: 'Local Ollama Models', status: 'operational', detail: 'Configured models loaded from AEGIS registry', lastChecked: '2026-09-03T14:55:00Z' },
-  { id: 'vision', name: 'Vision Model', status: 'operational', detail: 'LLaVA-13B ready', lastChecked: '2026-09-03T14:55:00Z' },
+  { id: 'vision', name: 'Vision Model', status: 'operational', detail: 'qwen3-vl:4b ready', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'ocr', name: 'OCR Engine', status: 'operational', detail: 'Tesseract + DocTR active', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'kb', name: 'Knowledge Base', status: 'operational', detail: '856 documents indexed', lastChecked: '2026-09-03T14:55:00Z' },
   { id: 'sandbox', name: 'Sandbox', status: 'warning', detail: 'High memory usage', lastChecked: '2026-09-03T14:55:00Z' },
@@ -57,11 +57,11 @@ export const mockSovereigntyMetrics: SovereigntyMetrics = {
 // ─── Conversations ─────────────────────────────────────────────────────────────
 
 export const mockConversations: Conversation[] = [
-  { id: 'conv-001', title: 'Inspection Report Analysis — Unit 4', taskType: 'Document Analysis', model: 'qwen3.5:9b', status: 'completed', createdAt: '2026-09-03T14:30:00Z', updatedAt: '2026-09-03T14:45:00Z', messageCount: 6 },
-  { id: 'conv-002', title: 'Vendor Comparison — Valve Suppliers', taskType: 'Comparison', model: 'qwen3.5:9b', status: 'active', createdAt: '2026-09-03T13:45:00Z', updatedAt: '2026-09-03T14:50:00Z', messageCount: 4 },
-  { id: 'conv-003', title: 'H2S Emergency Protocol Search', taskType: 'Knowledge Search', model: 'qwen3.5:9b', status: 'completed', createdAt: '2026-09-03T12:00:00Z', updatedAt: '2026-09-03T12:15:00Z', messageCount: 3 },
-  { id: 'conv-004', title: 'Pipeline Pressure Calculation', taskType: 'Code Execution', model: 'qwen3-coder:30b-a3b-q4_K_M', status: 'failed', createdAt: '2026-09-03T11:15:00Z', updatedAt: '2026-09-03T11:20:00Z', messageCount: 2 },
-  { id: 'conv-005', title: 'P&ID Drawing Analysis Rev.12', taskType: 'Vision Analysis', model: 'LLaVA-13B', status: 'completed', createdAt: '2026-09-03T10:00:00Z', updatedAt: '2026-09-03T10:30:00Z', messageCount: 5 },
+  { id: 'conv-001', title: 'Inspection Report Analysis — Unit 4', taskType: 'Document Analysis', model: 'qwen3.5:4b', status: 'completed', createdAt: '2026-09-03T14:30:00Z', updatedAt: '2026-09-03T14:45:00Z', messageCount: 6 },
+  { id: 'conv-002', title: 'Vendor Comparison — Valve Suppliers', taskType: 'Comparison', model: 'qwen3.5:4b', status: 'active', createdAt: '2026-09-03T13:45:00Z', updatedAt: '2026-09-03T14:50:00Z', messageCount: 4 },
+  { id: 'conv-003', title: 'H2S Emergency Protocol Search', taskType: 'Knowledge Search', model: 'qwen3.5:4b', status: 'completed', createdAt: '2026-09-03T12:00:00Z', updatedAt: '2026-09-03T12:15:00Z', messageCount: 3 },
+  { id: 'conv-004', title: 'Pipeline Pressure Calculation', taskType: 'Code Execution', model: 'qwen2.5-coder:7b', status: 'failed', createdAt: '2026-09-03T11:15:00Z', updatedAt: '2026-09-03T11:20:00Z', messageCount: 2 },
+  { id: 'conv-005', title: 'P&ID Drawing Analysis Rev.12', taskType: 'Vision Analysis', model: 'qwen3-vl:4b', status: 'completed', createdAt: '2026-09-03T10:00:00Z', updatedAt: '2026-09-03T10:30:00Z', messageCount: 5 },
 ];
 
 export const mockMessages: Message[] = [
@@ -172,7 +172,7 @@ export const mockAgentExecutions: AgentExecution[] = [
       { id: 'n2', name: 'Master Agent', type: 'master', status: 'completed', model: 'LLaMA-3-70B', duration: '0.3s', position: { x: 400, y: 100 } },
       { id: 'n3', name: 'Task Planning', type: 'planner', status: 'completed', duration: '0.5s', position: { x: 400, y: 200 } },
       { id: 'n4', name: 'OCR Processing', type: 'ocr', status: 'completed', tool: 'DocTR', duration: '12s', position: { x: 200, y: 320 } },
-      { id: 'n5', name: 'Vision Analysis', type: 'vision', status: 'completed', model: 'LLaVA-13B', duration: '8s', position: { x: 600, y: 320 } },
+      { id: 'n5', name: 'Vision Analysis', type: 'vision', status: 'completed', model: 'qwen3-vl:4b', duration: '8s', position: { x: 600, y: 320 } },
       { id: 'n6', name: 'Knowledge Search', type: 'rag', status: 'completed', tool: 'Vector DB', duration: '2s', position: { x: 400, y: 440 } },
       { id: 'n7', name: 'Reasoning Model', type: 'reasoning', status: 'completed', model: 'Mistral-7B', duration: '18s', position: { x: 400, y: 560 } },
       { id: 'n8', name: 'Document Generation', type: 'document', status: 'completed', duration: '5s', position: { x: 400, y: 680 } },
@@ -417,7 +417,7 @@ export const mockApprovals: Approval[] = [
     requestType: 'AI-Generated Analysis',
     requestDetail: 'Automated P&ID drawing analysis with equipment identification',
     generatedBy: 'AEGIS AI',
-    model: 'LLaVA-13B',
+    model: 'qwen3-vl:4b',
     status: 'rejected',
     createdAt: '2026-08-20T10:00:00Z',
     reviewedAt: '2026-08-20T11:30:00Z',
@@ -470,7 +470,7 @@ export const mockAuditRecords: AuditRecord[] = [
   { id: 'aud-003', artifactId: 'art-001', artifactName: 'Inspection Analysis Report', action: 'DOCUMENT_GENERATED', actor: 'AEGIS AI', model: 'Mistral-7B', timestamp: '2026-09-01T09:16:00Z', hash: '0xc9d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2', blockchainStatus: 'confirmed', transactionHash: '0x9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0', blockNumber: 18234569 },
   { id: 'aud-004', artifactId: 'art-001', artifactName: 'Inspection Analysis Report', action: 'HUMAN_APPROVED', actor: 'Rajesh Kumar', timestamp: '2026-09-01T10:00:00Z', hash: '0xd1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2', blockchainStatus: 'confirmed', transactionHash: '0xa0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1', blockNumber: 18234570 },
   { id: 'aud-005', artifactId: 'doc-002', artifactName: 'Safety Manual — H2S', action: 'KNOWLEDGE_INDEXED', actor: 'AEGIS System', timestamp: '2026-08-15T10:35:00Z', hash: '0xe3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4', blockchainStatus: 'confirmed', transactionHash: '0xb1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2', blockNumber: 18234500 },
-  { id: 'aud-006', artifactId: 'doc-006', artifactName: 'P&ID Rev.12', action: 'AI_ANALYSIS', actor: 'AEGIS AI', model: 'LLaVA-13B', timestamp: '2026-08-20T10:00:00Z', hash: '0xf5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6', blockchainStatus: 'confirmed', transactionHash: '0xc2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3', blockNumber: 18234520 },
+  { id: 'aud-006', artifactId: 'doc-006', artifactName: 'P&ID Rev.12', action: 'AI_ANALYSIS', actor: 'AEGIS AI', model: 'qwen3-vl:4b', timestamp: '2026-08-20T10:00:00Z', hash: '0xf5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6', blockchainStatus: 'confirmed', transactionHash: '0xc2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3', blockNumber: 18234520 },
   { id: 'aud-007', artifactId: 'doc-006', artifactName: 'P&ID Rev.12 Analysis', action: 'HUMAN_REJECTED', actor: 'Amit Patel', timestamp: '2026-08-20T11:30:00Z', hash: '0xa7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8', blockchainStatus: 'confirmed', transactionHash: '0xd3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4', blockNumber: 18234521 },
   { id: 'aud-008', artifactId: 'doc-007', artifactName: 'Board Approval Note', action: 'DOCUMENT_UPLOADED', actor: 'Anand Mehta', timestamp: '2026-09-03T08:00:00Z', hash: '0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2', blockchainStatus: 'pending', transactionHash: '0xe4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5', blockNumber: 18234580 },
   { id: 'aud-009', artifactId: 'exec-001', artifactName: 'Agent Execution — Inspection Analysis', action: 'AGENT_EXECUTED', actor: 'AEGIS AI', model: 'Mistral-7B', timestamp: '2026-09-03T14:32:15Z', hash: '0xb2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3', blockchainStatus: 'confirmed', transactionHash: '0xf5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6', blockNumber: 18234585 },
