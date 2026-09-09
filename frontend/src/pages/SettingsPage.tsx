@@ -1,12 +1,15 @@
 import { useState } from 'react';
-import { CheckCircle2, Save } from 'lucide-react';
+import { CheckCircle2, Save, Check } from 'lucide-react';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Card } from '@/components/ui/Card';
 import { Tabs } from '@/components/ui/Tabs';
+import { themes, type ThemeId } from '@/theme/themes';
+import { useTheme } from '@/theme/useTheme';
 
 export default function SettingsPage() {
+  const { theme, setTheme } = useTheme();
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Settings State
@@ -165,6 +168,66 @@ export default function SettingsPage() {
           },
         ]}
       />
+
+      <Card padding="md" className="space-y-4">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-wider text-text-muted font-mono">
+            Theme Preview
+          </div>
+          <p className="mt-1 text-xs text-text-secondary">Choose your preferred AEGIS appearance. Changes apply immediately and persist on this device.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {themes.map((option) => (
+            <ThemePreviewCard
+              key={option.id}
+              id={option.id}
+              name={option.name}
+              description={option.description}
+              selected={theme === option.id}
+              onSelect={() => setTheme(option.id)}
+            />
+          ))}
+        </div>
+      </Card>
     </div>
+  );
+}
+
+function ThemePreviewCard({
+  id,
+  name,
+  description,
+  selected,
+  onSelect,
+}: {
+  id: ThemeId;
+  name: string;
+  description: string;
+  selected: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      onClick={onSelect}
+      className={`group rounded-lg border p-2 text-left transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary ${selected ? 'border-accent-primary bg-accent-primary/10' : 'border-border-subtle hover:border-border-default'}`}
+    >
+      <div data-theme={id} className="overflow-hidden rounded-md border border-border-default bg-bg-primary text-text-primary">
+        <div className="flex h-20 items-center gap-2 p-3">
+          <span className="text-2xl font-semibold tracking-tight">Aa</span>
+          <div className="flex-1 rounded border border-border-default bg-bg-surface p-2">
+            <div className="h-1.5 w-3/4 rounded bg-text-primary/70" />
+            <div className="mt-2 h-1.5 w-1/2 rounded bg-text-secondary/60" />
+            <div className="mt-3 h-1.5 w-1/3 rounded bg-accent-primary" />
+          </div>
+        </div>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-text-primary">{name}</span>
+        {selected && <Check className="h-3.5 w-3.5 text-accent-primary" aria-label="Selected" />}
+      </div>
+      <span className="mt-1 block text-[10px] text-text-dim">{description}</span>
+    </button>
   );
 }

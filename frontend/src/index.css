@@ -38,6 +38,105 @@
   --font-mono: "JetBrains Mono", "Fira Code", ui-monospace, monospace;
 }
 
+@theme {
+  /* Legacy token aliases used throughout the existing frontend. */
+  --color-bg-subtle: var(--color-bg-hover);
+  --color-border-subtle: var(--color-border-default);
+  --color-border-hover: var(--color-border-strong);
+  --color-text-muted: var(--color-text-secondary);
+  --color-text-dim: var(--color-text-tertiary);
+  --color-accent-primary: var(--color-accent);
+  --color-accent-primary-hover: var(--color-accent-hover);
+  --color-status-success: var(--color-success);
+  --color-status-warning: var(--color-warning);
+  --color-status-danger: var(--color-danger);
+}
+
+/* Theme values are kept in one place. Existing Tailwind token utilities
+   (bg-bg-surface, text-text-primary, border-border-default, etc.) consume
+   these variables everywhere in the application. */
+:root,
+:root[data-theme='aegis'],
+[data-theme='aegis'] {
+  --color-bg-primary: #0a0a0c;
+  --color-bg-surface: #111114;
+  --color-bg-elevated: #19191d;
+  --color-bg-hover: #1f1f24;
+  --color-bg-active: #26262c;
+  --color-border-default: rgba(255, 255, 255, 0.035);
+  --color-border-strong: rgba(255, 255, 255, 0.07);
+  --color-border-accent: rgba(99, 131, 255, 0.22);
+  --color-text-primary: #e8e8ec;
+  --color-text-secondary: #8b8b96;
+  --color-text-tertiary: #55555e;
+  --color-text-inverse: #0a0a0c;
+  --color-accent: #6383ff;
+  --color-accent-hover: #4f6fef;
+  --color-accent-muted: rgba(99, 131, 255, 0.1);
+  --color-accent-subtle: rgba(99, 131, 255, 0.06);
+  --color-success: #3ecf71;
+  --color-success-muted: rgba(62, 207, 113, 0.1);
+  --color-warning: #e5a93e;
+  --color-warning-muted: rgba(229, 169, 62, 0.1);
+  --color-danger: #e55454;
+  --color-danger-muted: rgba(229, 84, 84, 0.1);
+  --theme-scrollbar: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme='aquatic'],
+[data-theme='aquatic'] {
+  --color-bg-primary: #07131b;
+  --color-bg-surface: #0d202b;
+  --color-bg-elevated: #14303d;
+  --color-bg-hover: #193b4a;
+  --color-bg-active: #204a5a;
+  --color-border-default: rgba(150, 221, 232, 0.12);
+  --color-border-strong: rgba(150, 221, 232, 0.22);
+  --color-border-accent: rgba(89, 211, 222, 0.32);
+  --color-text-primary: #e5f7f8;
+  --color-text-secondary: #a8cbd0;
+  --color-text-tertiary: #6e969e;
+  --color-text-inverse: #07131b;
+  --color-accent: #59d3de;
+  --color-accent-hover: #7be1e8;
+  --color-accent-muted: rgba(89, 211, 222, 0.15);
+  --color-accent-subtle: rgba(89, 211, 222, 0.08);
+  --color-success: #63d6a0;
+  --color-success-muted: rgba(99, 214, 160, 0.14);
+  --color-warning: #e6bf72;
+  --color-warning-muted: rgba(230, 191, 114, 0.14);
+  --color-danger: #ed8585;
+  --color-danger-muted: rgba(237, 133, 133, 0.14);
+  --theme-scrollbar: rgba(150, 221, 232, 0.2);
+}
+
+:root[data-theme='desert'],
+[data-theme='desert'] {
+  --color-bg-primary: #eee7dc;
+  --color-bg-surface: #f8f3ea;
+  --color-bg-elevated: #fffaf1;
+  --color-bg-hover: #e5dacb;
+  --color-bg-active: #dacbb9;
+  --color-border-default: rgba(76, 61, 47, 0.12);
+  --color-border-strong: rgba(76, 61, 47, 0.22);
+  --color-border-accent: rgba(137, 91, 48, 0.3);
+  --color-text-primary: #302820;
+  --color-text-secondary: #66584a;
+  --color-text-tertiary: #887867;
+  --color-text-inverse: #fffaf1;
+  --color-accent: #956535;
+  --color-accent-hover: #774b27;
+  --color-accent-muted: rgba(149, 101, 53, 0.14);
+  --color-accent-subtle: rgba(149, 101, 53, 0.08);
+  --color-success: #327951;
+  --color-success-muted: rgba(50, 121, 81, 0.13);
+  --color-warning: #9a681e;
+  --color-warning-muted: rgba(154, 104, 30, 0.14);
+  --color-danger: #a44236;
+  --color-danger-muted: rgba(164, 66, 54, 0.13);
+  --theme-scrollbar: rgba(76, 61, 47, 0.22);
+}
+
 @layer base {
   *,
   *::before,
@@ -50,6 +149,7 @@
   html {
     color-scheme: dark;
     font-size: 14px;
+    background: var(--color-bg-primary);
   }
 
   body {
@@ -73,12 +173,12 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--theme-scrollbar);
     border-radius: 3px;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--color-border-strong);
   }
 
   /* ── Focus ───────────────────────────────────────────────── */
@@ -91,5 +191,14 @@
   ::selection {
     background: var(--color-accent-muted);
     color: var(--color-text-primary);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  body,
+  body * {
+    transition-property: background-color, border-color, color, fill, stroke;
+    transition-duration: 120ms;
+    transition-timing-function: ease-out;
   }
 }

@@ -109,7 +109,7 @@ Immediate derating or plate doubler repair required prior to turnaround closure.
         actions={
           <div className="flex items-center gap-2">
             <Button
-              variant="secondary"
+              variant="success"
               size="sm"
               onClick={() => void downloadDocument()}
             >
