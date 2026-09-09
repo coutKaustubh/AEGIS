@@ -79,8 +79,11 @@ async function request<T>(endpoint: string, options: RequestOptions = {}, retry 
   if (!response.ok) {
     let detail = `${response.status} ${response.statusText}`;
     try {
-      const payload = await response.json() as { detail?: string; message?: string };
-      detail = payload.detail || payload.message || detail;
+      const payload = await response.json() as { detail?: string; message?: string; [key: string]: unknown };
+      const fieldErrors = Object.entries(payload)
+        .filter(([key]) => !['detail', 'message'].includes(key))
+        .flatMap(([key, value]) => Array.isArray(value) ? value.map((item) => `${key}: ${String(item)}`) : [`${key}: ${String(value)}`]);
+      detail = payload.detail || payload.message || fieldErrors.join('; ') || detail;
     } catch {
       // Keep the HTTP status when the server did not return JSON.
     }

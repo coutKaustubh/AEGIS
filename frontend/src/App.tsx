@@ -16,6 +16,7 @@ import AuditPage from '@/pages/AuditPage';
 import SovereigntyPage from '@/pages/SovereigntyPage';
 import UserManagementPage from '@/pages/UserManagementPage';
 import SettingsPage from '@/pages/SettingsPage';
+import EngineeringPage from '@/pages/EngineeringPage';
 
 export default function App() {
   return (
@@ -37,6 +38,7 @@ export default function App() {
             <Route index element={<DashboardPage />} />
             <Route path="dashboard" element={<DashboardPage />} />
             <Route path="workspace" element={<WorkspacePage />} />
+            <Route path="engineering" element={<EngineeringPage />} />
 
             {/* Automation & Agents */}
             <Route path="agents" element={<AgentsPage />} />

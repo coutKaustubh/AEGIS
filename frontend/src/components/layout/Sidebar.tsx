@@ -11,6 +11,7 @@ import {
   Server,
   Settings,
   Users,
+  Wrench,
   LogOut,
   ChevronLeft,
   ChevronRight,
@@ -34,6 +35,7 @@ const iconMap: Record<string, LucideIcon> = {
   Server,
   Settings,
   Users,
+  Wrench,
 };
 
 interface SidebarProps {
