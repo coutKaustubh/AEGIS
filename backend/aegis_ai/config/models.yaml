@@ -5,7 +5,7 @@ models:
 
   qwen-general:
     provider: ollama
-    model: "qwen3.5:9b"
+    model: "qwen3.5:4b"
     capabilities:
       - general
       - reasoning
@@ -14,11 +14,14 @@ models:
       - artifact_generation
     context_length: 32768
     priority: 10
-    supports_thinking: true
+    # The local 4B build can spend the entire bounded response budget in
+    # hidden thinking and return empty visible content. Keep final answers
+    # reliable for the interactive task pipeline.
+    supports_thinking: false
 
   qwen-vision:
     provider: ollama
-    model: "qwen3-vl:8b"
+    model: "qwen3-vl:4b"
     capabilities:
       - vision
       - multimodal
@@ -26,11 +29,12 @@ models:
       - document_analysis
     context_length: 32768
     priority: 10
-    supports_thinking: true
+    # Keep vision responses visible and bounded on the local 4B model.
+    supports_thinking: false
 
   qwen-coder:
     provider: ollama
-    model: "qwen3-coder:30b-a3b-q4_K_M"
+    model: "qwen2.5-coder:7b"
     capabilities:
       - coding
       - debugging
@@ -41,7 +45,7 @@ models:
 
   llama-small:
     provider: ollama
-    model: "Qwen2.5:1.5b"
+    model: "llama3.2:1b"
     capabilities:
       - general
       - lightweight

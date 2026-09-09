@@ -8,7 +8,7 @@ from tools.vision import VisionRuntime
 
 class FakeVisionProvider:
     class Config:
-        model = "qwen3-vl:8b"
+        model = "qwen3-vl:4b"
 
     config = Config()
 
