@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 from concurrent.futures import ThreadPoolExecutor
@@ -55,13 +57,28 @@ def _save_uploaded_files(message: chats, uploaded_files: list[Any]) -> list[dict
     storage = FileSystemStorage(location=str(shared_root), base_url="/shared/uploads/")
     result = []
     for uploaded in uploaded_files:
-        safe_name = storage.get_available_name(uploaded.name)
+        # Some deployed databases still have the legacy varchar(100) column
+        # even though the current model allows 255 characters. Keep the
+        # persisted display name safe until the schema migration is applied,
+        # while preserving the extension used by the runtime and downloads.
+        original_name = str(getattr(uploaded, "name", "upload"))
+        stem, suffix = os.path.splitext(original_name)
+        max_db_name = 100
+        display_name = original_name[:max_db_name]
+        if len(original_name) > max_db_name:
+            stem_limit = max(1, max_db_name - len(suffix))
+            display_name = f"{stem[:stem_limit]}{suffix}"
+        # The deployed database may still have the legacy FileField varchar(100)
+        # constraint. Store a compact unique filename so the absolute path
+        # remains safely below that limit; keep the user's original filename
+        # in file_name for the UI.
+        safe_name = storage.get_available_name(f"{uuid.uuid4().hex}{suffix}")
         saved_name = storage.save(safe_name, uploaded)
         path = Path(storage.path(saved_name)).resolve()
         attachment = attachments.objects.create(
             message=message,
             file=str(path),
-            file_name=uploaded.name,
+            file_name=display_name,
             file_type=getattr(uploaded, "content_type", "") or "",
             file_size=getattr(uploaded, "size", 0),
         )

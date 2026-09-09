@@ -74,7 +74,7 @@ class attachments(models.Model):
         on_delete=models.CASCADE,
         related_name="attachments"
     )
-    file = models.FileField(upload_to="chat_attachments/")
+    file = models.FileField(upload_to="chat_attachments/", max_length=500)
     file_name = models.CharField(max_length=255)
     file_type = models.CharField(max_length=100, blank=True, null=True)
     file_size = models.BigIntegerField(help_text="File size in bytes")
@@ -164,4 +164,3 @@ class permission_requests(models.Model):
 
     class Meta:
         ordering = ["-created_at"]
-
