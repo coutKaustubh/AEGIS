@@ -51,3 +51,23 @@ async def test_short_request_returns_to_general_master_path():
     plan = await master.route_request("hi")
     assert plan[0]["agent"] == "general_agent"
     assert plan[0]["routing_source"] == "master_agent"
+
+
+def test_attached_pdf_overrides_short_lightweight_route():
+    master = MasterAgent(AgentRegistry())
+    plan = master._capability_plan("explain", context={"input_path": "/tmp/h.pdf"})
+    assert plan[0]["agent"] == "document_agent"
+    assert plan[0]["capability"] == "document_analysis"
+
+
+def test_attached_image_overrides_short_lightweight_route():
+    master = MasterAgent(AgentRegistry())
+    plan = master._capability_plan("?", context={"image_paths": ["/tmp/diagram.png"]})
+    assert plan[0]["agent"] == "vision_agent"
+
+
+def test_image_filename_does_not_fall_through_to_lightweight_route():
+    master = MasterAgent(AgentRegistry())
+    request = "?? valid__images__single-images-of-all-valve-symbol-in-p-id_65_png_jpg.rf.a482d2528b25ad71e62a41727c10d681.jpg"
+    plan = master._capability_plan(request)
+    assert plan[0]["agent"] == "vision_agent"
