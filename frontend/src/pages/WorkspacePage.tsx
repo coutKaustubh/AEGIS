@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -12,9 +12,12 @@ import {
   Paperclip,
   Plus,
   Send,
+  Search,
   Shield,
   Square,
   Terminal,
+  ThumbsDown,
+  ThumbsUp,
   WifiOff,
   X,
   XCircle,
@@ -267,7 +270,14 @@ export default function WorkspacePage() {
   const [error, setError] = useState('');
   const [approvalBusy, setApprovalBusy] = useState<string | null>(null);
   const [showTrace, setShowTrace] = useState(false);
+  const [sessionSearch, setSessionSearch] = useState('');
   const abortRef = useRef<AbortController | null>(null);
+
+  const filteredSessions = useMemo(() => {
+    const query = sessionSearch.trim().toLocaleLowerCase();
+    if (!query) return sessions;
+    return sessions.filter((session) => session.chat_title.toLocaleLowerCase().includes(query));
+  }, [sessions, sessionSearch]);
 
   const selectSession = (session: ChatSessionRecord) => {
     localStorage.setItem('aegis_active_session_id', session.id);
@@ -699,7 +709,8 @@ export default function WorkspacePage() {
       <div className="flex min-h-0 flex-1">
         <aside className="hidden w-64 shrink-0 border-r border-white/10 bg-[#0c0e11] md:flex md:flex-col">
           <div className="flex items-center justify-between border-b border-white/10 px-4 py-3"><span className="font-mono text-[10px] uppercase tracking-[0.16em] text-white/50">Sessions</span><button onClick={() => void createSession()} className="rounded p-1 text-white/50 hover:bg-white/10 hover:text-white" title="New session"><Plus className="h-4 w-4" /></button></div>
-          <div className="min-h-0 flex-1 overflow-y-auto">{sessions.map((session) => <button key={session.id} onClick={() => selectSession(session)} className={cn('w-full border-b border-white/5 px-4 py-3 text-left', activeSession?.id === session.id ? 'bg-white/10' : 'hover:bg-white/5')}><div className="truncate text-xs text-white/85">{session.chat_title}</div><div className="mt-1 font-mono text-[9px] text-white/35">{new Date(session.updated_at).toLocaleString()}</div></button>)}{!loading && sessions.length === 0 && <div className="p-4 text-xs text-white/35">No sessions yet.</div>}</div>
+          <div className="border-b border-white/10 px-3 py-3"><label className="flex items-center gap-2 rounded border border-white/10 bg-white/[0.03] px-2 py-1.5 text-white/40 focus-within:border-cyan-300/40 focus-within:text-cyan-200"><Search className="h-3.5 w-3.5 shrink-0" /><input value={sessionSearch} onChange={(event) => setSessionSearch(event.target.value)} placeholder="Search chats" aria-label="Search existing chats" className="min-w-0 flex-1 bg-transparent font-mono text-[10px] text-white/80 outline-none placeholder:text-white/30" />{sessionSearch && <button type="button" onClick={() => setSessionSearch('')} aria-label="Clear chat search" className="text-white/35 hover:text-white"><X className="h-3 w-3" /></button>}</label></div>
+          <div className="min-h-0 flex-1 overflow-y-auto">{filteredSessions.map((session) => <button key={session.id} onClick={() => selectSession(session)} className={cn('w-full border-b border-white/5 px-4 py-3 text-left', activeSession?.id === session.id ? 'bg-white/10' : 'hover:bg-white/5')}><div className="truncate text-xs text-white/85">{session.chat_title}</div><div className="mt-1 font-mono text-[9px] text-white/35">{new Date(session.updated_at).toLocaleString()}</div></button>)}{!loading && sessions.length === 0 && <div className="p-4 text-xs text-white/35">No sessions yet.</div>}{!loading && sessions.length > 0 && filteredSessions.length === 0 && <div className="p-4 text-center font-mono text-[10px] text-white/35">No chats match “{sessionSearch}”.</div>}</div>
           <div className="border-t border-white/10 p-4 font-mono text-[10px] text-white/40"><div className="mb-2 flex items-center gap-2 text-emerald-400"><span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> AIR-GAPPED / LOCAL</div><div>PoA · runtime ready</div></div>
         </aside>
 
@@ -708,7 +719,7 @@ export default function WorkspacePage() {
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 lg:px-10">
             {error && <div className="mb-4 flex items-start gap-2 rounded border border-red-400/30 bg-red-400/10 p-3 text-xs text-red-200"><AlertTriangle className="h-4 w-4 shrink-0" />{error}<button className="ml-auto" onClick={() => setError('')}><X className="h-3 w-3" /></button></div>}
             {messages.length === 0 && !sending && <div className="mb-8 rounded border border-white/10 bg-[#0e1013] p-5 font-mono text-xs text-white/50"><div className="mb-3 text-cyan-300">AEGIS ready</div><div>Submit a request to run the same Master workflow as <span className="text-white/80">cli.py</span>.</div><div className="mt-2 text-white/35">Plans, policy checks, checkpoints, tools, recovery, verification, and artifacts appear here as they happen.</div></div>}
-            {messages.map((message) => message.role === 'user' ? <div key={message.id} className="mb-6 flex justify-end"><div className="w-full max-w-3xl"><div className="mb-2 text-right font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">you &gt;</div><div className="whitespace-pre-wrap rounded border border-white/15 bg-[#0e1013] px-4 py-3 text-sm text-white/85">{message.content}{message.attachments?.length ? <div className="mt-3 flex flex-wrap justify-end gap-2">{message.attachments.map((file) => <span key={file.id} className="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 font-mono text-[10px] text-white/55"><FileText className="h-3 w-3" />{file.name}</span>)}</div> : null}</div></div></div> : message.role === 'assistant' ? <div key={message.id} className="mb-6 flex justify-start"><div className="w-full max-w-3xl rounded border border-emerald-400/25 bg-emerald-400/[0.025] p-4"><div className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/70">response</div><div className="whitespace-pre-wrap text-sm leading-6 text-white/85">{message.content}</div>{message.artifacts?.length ? <div className="mt-3 space-y-3">{message.artifacts.map((artifact) => <div key={artifact.id} className="rounded border border-cyan-300/20 bg-cyan-300/[0.03] p-2"><button type="button" onClick={() => void downloadFile(artifact.downloadUrl, artifact.name, setError)} className="flex items-center gap-2 font-mono text-xs text-cyan-200 hover:underline"><Download className="h-3.5 w-3.5" />Download {artifact.name}</button>{artifact.preview ? <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap border-t border-white/10 pt-2 font-mono text-[10px] leading-5 text-white/60">{artifact.preview}</pre> : null}</div>)}</div> : null}</div></div> : null)}
+            {messages.map((message) => message.role === 'user' ? <div key={message.id} className="mb-6 flex justify-end"><div className="w-full max-w-3xl"><div className="mb-2 text-right font-mono text-[10px] uppercase tracking-[0.16em] text-white/35">you &gt;</div><div className="whitespace-pre-wrap rounded border border-white/15 bg-[#0e1013] px-4 py-3 text-sm text-white/85">{message.content}{message.attachments?.length ? <div className="mt-3 flex flex-wrap justify-end gap-2">{message.attachments.map((file) => <span key={file.id} className="inline-flex items-center gap-1 rounded border border-white/15 px-2 py-1 font-mono text-[10px] text-white/55"><FileText className="h-3 w-3" />{file.name}</span>)}</div> : null}</div></div></div> : message.role === 'assistant' ? <div key={message.id} className="mb-6 flex justify-start"><div className="w-full max-w-3xl rounded border border-emerald-400/25 bg-emerald-400/[0.025] p-4"><div className="mb-2 font-mono text-[10px] uppercase tracking-[0.16em] text-emerald-300/70">response</div><div className="whitespace-pre-wrap text-sm leading-6 text-white/85">{message.content}</div>{message.artifacts?.length ? <div className="mt-3 space-y-3">{message.artifacts.map((artifact) => <div key={artifact.id} className="rounded border border-cyan-300/20 bg-cyan-300/[0.03] p-2"><button type="button" onClick={() => void downloadFile(artifact.downloadUrl, artifact.name, setError)} className="flex items-center gap-2 font-mono text-xs text-cyan-200 hover:underline"><Download className="h-3.5 w-3.5" />Download {artifact.name}</button>{artifact.preview ? <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap border-t border-white/10 pt-2 font-mono text-[10px] leading-5 text-white/60">{artifact.preview}</pre> : null}</div>)}</div> : null}<ResponseFeedback messageId={message.id} /></div></div> : null)}
 
             {permissions.map((permission) => (
               <InlineApprovalCard
@@ -936,6 +947,31 @@ export default function WorkspacePage() {
       </div>
     </div>
   );
+}
+
+function ResponseFeedback({ messageId }: { messageId: string }) {
+  const storageKey = `aegis-response-feedback:${messageId}`;
+  const [feedback, setFeedback] = useState<'up' | 'down' | null>(() => {
+    const saved = localStorage.getItem(storageKey);
+    return saved === 'up' || saved === 'down' ? saved : null;
+  });
+  const [animating, setAnimating] = useState<'up' | 'down' | null>(null);
+
+  const chooseFeedback = (value: 'up' | 'down') => {
+    const next = feedback === value ? null : value;
+    setFeedback(next);
+    setAnimating(value);
+    window.setTimeout(() => setAnimating(null), 320);
+    if (next) localStorage.setItem(storageKey, next);
+    else localStorage.removeItem(storageKey);
+  };
+
+  return <div className="mt-4 flex items-center gap-2 border-t border-white/10 pt-3 font-mono text-[10px] text-white/40" aria-label="Response feedback">
+    <span>Was this response helpful?</span>
+    <button type="button" aria-label="Helpful response" aria-pressed={feedback === 'up'} onClick={() => chooseFeedback('up')} className={cn('inline-flex items-center gap-1 rounded px-2 py-1 transition hover:bg-emerald-300/10 hover:text-emerald-200 active:scale-95', feedback === 'up' && 'bg-emerald-300/15 text-emerald-200', animating === 'up' && 'animate-feedback-pop')}><ThumbsUp className="h-3 w-3" />Yes</button>
+    <button type="button" aria-label="Unhelpful response" aria-pressed={feedback === 'down'} onClick={() => chooseFeedback('down')} className={cn('inline-flex items-center gap-1 rounded px-2 py-1 transition hover:bg-red-300/10 hover:text-red-200 active:scale-95', feedback === 'down' && 'bg-red-300/15 text-red-200', animating === 'down' && 'animate-feedback-pop')}><ThumbsDown className="h-3 w-3" />No</button>
+    {feedback && <span className={cn('ml-1 text-white/30', animating === feedback && 'animate-feedback-pop')}>Thanks for your feedback</span>}
+  </div>;
 }
 
 function Metric({ label, value }: { label: string; value: unknown }) {
